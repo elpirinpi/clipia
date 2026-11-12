@@ -34,7 +34,9 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
 1. Descarga o copia la carpeta `clipia` a tu PC (por ejemplo,
    `C:\ClipIA`).
 2. Haz doble clic en **`setup.bat`**. El instalador:
-   - instala Python 3.11 con winget si no lo tienes;
+   - instala Python 3.12 (python.org) con winget si no lo tienes
+     (si tu `python` es de MSYS2, setup.bat instala el de python.org
+     porque MSYS2 no trae pip);
    - instala ffmpeg con winget si no lo tienes;
    - instala Deno con winget si no lo tienes (lo usa yt-dlp para
      descargar de YouTube sin errores);
@@ -92,8 +94,11 @@ voz base (~150 MB).
   `cmd` en la carpeta y ejecutar `python main.py` para ver el error
   completo.
 - **«python no se reconoce»**: cierra la ventana y ejecuta `setup.bat`
-  de nuevo; si sigue fallando, instala Python 3.11 desde
+  de nuevo; si sigue fallando, instala Python 3.12 desde
   python.org marcando «Add Python to PATH».
+- **«No module named pip»**: tu `python` es de MSYS2 y no trae pip.
+  Ejecuta `setup.bat` (instala Python 3.12 de python.org, que sí
+  trae pip) o corre `python -m ensurepip --upgrade` en cmd.
 - **«ffmpeg no se reconoce»**: ejecuta `setup.bat` de nuevo o instala
   ffmpeg con `winget install Gyan.FFmpeg`.
 - **«No se detectó habla en el video»**: el video no tiene voz clara

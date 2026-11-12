@@ -9,6 +9,10 @@ echo.
 echo --- Python ---
 python --version
 echo.
+echo --- py launcher (python.org) ---
+py --version
+py -3.12 --version
+echo.
 echo --- customtkinter ---
 python -c "import customtkinter; print('customtkinter OK')"
 echo.

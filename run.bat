@@ -1,16 +1,23 @@
 @echo off
 REM ClipIA - lanzador (doble clic para abrir la app)
+REM Usa el Python de python.org si existe (py -3.12); si no, el python del PATH.
 REM Si faltan las dependencias, las instala solo antes de abrir la app.
 cd /d %~dp0
 echo Iniciando ClipIA...
-where python >nul 2>nul
+set PY=python
+py --version >nul 2>nul
+if not errorlevel 1 set PY=py
+py -3.12 --version >nul 2>nul
+if not errorlevel 1 set PY=py -3.12
+%PY% --version >nul 2>nul
 if errorlevel 1 goto :sin_python
-python -c "import customtkinter" >nul 2>nul
+%PY% -c "import customtkinter" >nul 2>nul
 if errorlevel 1 goto :instalar_deps
 goto :abrir
 :instalar_deps
 echo Faltan las dependencias de ClipIA. Instalando, por favor espera...
-python -m pip install -r requirements.txt
+%PY% -m ensurepip --upgrade >nul 2>nul
+%PY% -m pip install -r requirements.txt
 if errorlevel 1 goto :error_deps
 goto :abrir
 :sin_python
@@ -27,7 +34,7 @@ pause
 exit /b 1
 :abrir
 echo Abriendo ClipIA...
-python main.py
+%PY% main.py
 if errorlevel 1 goto :error_app
 goto :eof
 :error_app

@@ -1,7 +1,9 @@
 @echo off
 REM ClipIA - instalador para Windows 10/11
-REM Instala Python 3.11 y ffmpeg con winget si faltan, y luego las
-REM dependencias de Python. Ejecutar una sola vez (doble clic).
+REM Instala Python 3.12 (python.org) con winget si falta, ffmpeg y Deno,
+REM y luego las dependencias de Python. Ejecutar una sola vez (doble clic).
+REM Usa el launcher py cuando existe, para no depender del PATH
+REM (un python de MSYS2 no trae pip).
 setlocal
 cd /d %~dp0
 
@@ -10,20 +12,31 @@ echo  ClipIA - instalacion
 echo ==================================================
 echo.
 
-where python >nul 2>nul
+set PY=python
+py --version >nul 2>nul
+if not errorlevel 1 set PY=py
+py -3.12 --version >nul 2>nul
+if not errorlevel 1 set PY=py -3.12
+py -3.12 --version >nul 2>nul
 if errorlevel 1 goto :instalar_python
-echo [1/3] Python encontrado:
-python --version
+echo [1/3] Python 3.12 encontrado:
+py -3.12 --version
 goto :paso_ffmpeg
 
 :instalar_python
-echo [1/3] Python no encontrado. Instalando Python 3.11 con winget...
-winget install -e --id Python.Python.3.11 --accept-source-agreements --accept-package-agreements
+echo [1/3] Python 3.12 (python.org) no encontrado. Instalando con winget...
+winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
+if errorlevel 1 goto :error_python
+set PY=py -3.12
+goto :paso_ffmpeg
+
+:error_python
 echo.
-echo Si Python se acaba de instalar, cierra esta ventana y vuelve
-echo a ejecutar setup.bat para continuar con el paso 2.
+echo ERROR: no se pudo instalar Python 3.12.
+echo Instalalo desde python.org marcando "Add Python to PATH"
+echo y vuelve a ejecutar setup.bat.
 pause
-exit /b 0
+exit /b 1
 
 :paso_ffmpeg
 where ffmpeg >nul 2>nul
@@ -53,8 +66,9 @@ goto :paso_deps
 :paso_deps
 echo.
 echo [3/3] Instalando dependencias de Python (puede tardar unos minutos)...
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+%PY% -m ensurepip --upgrade >nul 2>nul
+%PY% -m pip install --upgrade pip
+%PY% -m pip install -r requirements.txt
 if errorlevel 1 goto :error_deps
 echo.
 echo ==================================================

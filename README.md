@@ -86,6 +86,11 @@ voz base (~150 MB).
 
 ## Solución de problemas
 
+- **La ventana se cierra sin abrir la app**: ejecuta
+  `diagnostico.bat` y revisa qué línea falla (Python, customtkinter,
+  tkinter, faster-whisper, yt-dlp o ffmpeg). También puedes abrir
+  `cmd` en la carpeta y ejecutar `python main.py` para ver el error
+  completo.
 - **«python no se reconoce»**: cierra la ventana y ejecuta `setup.bat`
   de nuevo; si sigue fallando, instala Python 3.11 desde
   python.org marcando «Add Python to PATH».

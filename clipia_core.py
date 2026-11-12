@@ -447,6 +447,7 @@ def descargar_youtube(url, carpeta_destino, progreso=None):
                    "bestvideo[height<=1080]+bestaudio/"
                    "best[height<=1080]/best"),
         "merge_output_format": "mp4",
+        "restrictfilenames": True,
         "outtmpl": os.path.join(carpeta_destino, "%(title)s.%(ext)s"),
         "quiet": True,
         "no_warnings": True,

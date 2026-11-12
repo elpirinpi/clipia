@@ -127,6 +127,7 @@ class AppClipIA(ctk.CTk):
         self.seleccion = []        # lista de tk.BooleanVar, una por clip
         self.carpeta_salida = os.path.join(
             os.path.expanduser("~"), "Videos", "ClipIA")
+        os.makedirs(self.carpeta_salida, exist_ok=True)
         self.ocupado = False
         self._cola_ui = queue.Queue()
         self.after(100, self._procesar_cola)
@@ -286,15 +287,15 @@ class AppClipIA(ctk.CTk):
 
     # -- Utilidades de interfaz ------------------------------------------
 
-    def _ui(self, funcion, *args):
+    def _ui(self, funcion, *args, **kwargs):
         """Ejecuta `funcion` en el hilo principal (seguro desde hilos)."""
-        self._cola_ui.put((funcion, args))
+        self._cola_ui.put((funcion, args, kwargs))
 
     def _procesar_cola(self):
         try:
             while True:
-                funcion, args = self._cola_ui.get_nowait()
-                funcion(*args)
+                funcion, args, kwargs = self._cola_ui.get_nowait()
+                funcion(*args, **kwargs)
         except queue.Empty:
             pass
         self.after(100, self._procesar_cola)
@@ -331,6 +332,8 @@ class AppClipIA(ctk.CTk):
             self.entrada_archivo.delete(0, "end")
             self.entrada_archivo.insert(0, ruta)
             self.entrada_url.delete(0, "end")
+            self.etiqueta_video.configure(
+                text="Video: %s" % os.path.basename(ruta))
 
     def _elegir_salida(self):
         carpeta = filedialog.askdirectory(title="Carpeta de salida")
@@ -348,6 +351,9 @@ class AppClipIA(ctk.CTk):
             messagebox.showinfo(
                 "ClipIA", "Elige un archivo de video o pega una URL de YouTube.")
             return
+        self.carpeta_salida = self.entrada_salida.get().strip() \
+            or self.carpeta_salida
+        os.makedirs(self.carpeta_salida, exist_ok=True)
         self._bloquear(True)
         self._ir_paso(1)
         threading.Thread(target=self._hilo_analizar, args=(ruta, url),
@@ -395,8 +401,9 @@ class AppClipIA(ctk.CTk):
                      "Análisis listo: %d clips encontrados."
                      % len(self.candidatos), 1.0)
         except Exception as error:  # noqa: BLE001 - mostrar cualquier error
-            self._ui(self._estado, "Error: %s" % error, 0)
-            self._ui(messagebox.showerror, "ClipIA", str(error))
+            detalle = "%s: %s" % (type(error).__name__, error)
+            self._ui(self._estado, "Error: %s" % detalle, 0)
+            self._ui(messagebox.showerror, "ClipIA", detalle)
             self._ui(self._ir_paso, 0)
         finally:
             self._ui(self._bloquear, False)
@@ -504,8 +511,9 @@ class AppClipIA(ctk.CTk):
                      "%d clip(s) exportados en:\n%s"
                      % (total, self.carpeta_salida))
         except Exception as error:  # noqa: BLE001 - mostrar cualquier error
-            self._ui(self._estado, "Error: %s" % error, 0)
-            self._ui(messagebox.showerror, "ClipIA", str(error))
+            detalle = "%s: %s" % (type(error).__name__, error)
+            self._ui(self._estado, "Error: %s" % detalle, 0)
+            self._ui(messagebox.showerror, "ClipIA", detalle)
         finally:
             self._ui(self._bloquear, False)
 

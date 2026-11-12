@@ -1,0 +1,4 @@
+# ClipIA — dependencias (versiones probadas el 12-11-2026)
+customtkinter==6.0.0
+faster-whisper==1.2.1
+yt-dlp==2026.10.26

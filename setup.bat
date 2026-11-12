@@ -46,7 +46,7 @@ if %errorlevel% neq 0 (
 echo.
 echo [3/3] Instalando dependencias de Python (puede tardar unos minutos)...
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: no se pudieron instalar las dependencias.

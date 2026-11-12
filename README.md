@@ -99,6 +99,10 @@ voz base (~150 MB).
 - **«No module named pip»**: tu `python` es de MSYS2 y no trae pip.
   Ejecuta `setup.bat` (instala Python 3.12 de python.org, que sí
   trae pip) o corre `python -m ensurepip --upgrade` en cmd.
+- **La carpeta `Videos` está dañada o redirigida** (OneDrive, enlace
+  roto): la app usa automáticamente `~/ClipIA` y si tampoco se
+  puede, una carpeta `salida` junto a la app. La carpeta en uso se
+  ve en el campo «Carpeta de salida».
 - **«ffmpeg no se reconoce»**: ejecuta `setup.bat` de nuevo o instala
   ffmpeg con `winget install Gyan.FFmpeg`.
 - **«No se detectó habla en el video»**: el video no tiene voz clara

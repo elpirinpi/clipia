@@ -108,6 +108,31 @@ class DialogoClipManual(ctk.CTkToplevel):
         self.destroy()
 
 
+def _crear_carpeta_salida():
+    """Devuelve una carpeta de salida usable.
+
+    Intenta en orden: Videos/ClipIA, ~/ClipIA y una carpeta 'salida'
+    junto a la app. La carpeta Videos de Windows a veces está
+    redirigida o dañada (OneDrive, enlaces rotos) y no se puede crear
+    nada dentro de ella, así que nunca se queda con una sola opción.
+    """
+    base_app = os.path.dirname(os.path.abspath(__file__))
+    inicio = os.path.expanduser("~")
+    candidatos = [
+        os.path.join(inicio, "Videos", "ClipIA"),
+        os.path.join(inicio, "ClipIA"),
+        os.path.join(base_app, "salida"),
+    ]
+    for carpeta in candidatos:
+        try:
+            os.makedirs(carpeta, exist_ok=True)
+            if os.path.isdir(carpeta):
+                return carpeta
+        except OSError:
+            continue
+    return candidatos[0]
+
+
 class AppClipIA(ctk.CTk):
     """Ventana principal de ClipIA."""
 
@@ -125,9 +150,7 @@ class AppClipIA(ctk.CTk):
         self.segmentos = []
         self.candidatos = []       # dicts con start, end, score, text
         self.seleccion = []        # lista de tk.BooleanVar, una por clip
-        self.carpeta_salida = os.path.join(
-            os.path.expanduser("~"), "Videos", "ClipIA")
-        os.makedirs(self.carpeta_salida, exist_ok=True)
+        self.carpeta_salida = _crear_carpeta_salida()
         self.ocupado = False
         self._cola_ui = queue.Queue()
         self.after(100, self._procesar_cola)
@@ -342,6 +365,24 @@ class AppClipIA(ctk.CTk):
             self.entrada_salida.delete(0, "end")
             self.entrada_salida.insert(0, carpeta)
 
+    def _asegurar_carpeta_salida(self):
+        """Crea la carpeta de salida; si no se puede, cambia a una
+        alternativa que funcione y avisa al usuario."""
+        self.carpeta_salida = self.entrada_salida.get().strip() \
+            or self.carpeta_salida
+        try:
+            os.makedirs(self.carpeta_salida, exist_ok=True)
+        except OSError:
+            alternativa = _crear_carpeta_salida()
+            messagebox.showwarning(
+                "ClipIA",
+                "No se pudo usar la carpeta:\n%s\n\n"
+                "Los clips se guardarán en:\n%s"
+                % (self.carpeta_salida, alternativa))
+            self.carpeta_salida = alternativa
+            self.entrada_salida.delete(0, "end")
+            self.entrada_salida.insert(0, alternativa)
+
     def _analizar(self):
         if self.ocupado:
             return
@@ -351,9 +392,7 @@ class AppClipIA(ctk.CTk):
             messagebox.showinfo(
                 "ClipIA", "Elige un archivo de video o pega una URL de YouTube.")
             return
-        self.carpeta_salida = self.entrada_salida.get().strip() \
-            or self.carpeta_salida
-        os.makedirs(self.carpeta_salida, exist_ok=True)
+        self._asegurar_carpeta_salida()
         self._bloquear(True)
         self._ir_paso(1)
         threading.Thread(target=self._hilo_analizar, args=(ruta, url),
@@ -474,8 +513,7 @@ class AppClipIA(ctk.CTk):
         if not elegidos:
             messagebox.showinfo("ClipIA", "Selecciona al menos un clip.")
             return
-        self.carpeta_salida = self.entrada_salida.get().strip() \
-            or self.carpeta_salida
+        self._asegurar_carpeta_salida()
         self._bloquear(True)
         self._ir_paso(3)
         threading.Thread(target=self._hilo_exportar, args=(elegidos,),

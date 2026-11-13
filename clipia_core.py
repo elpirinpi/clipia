@@ -7,6 +7,7 @@ Funciones:
   - Detectar los mejores momentos para clips cortos (30-90 s).
   - Generar subtítulos ASS estilo Shorts.
   - Exportar clips verticales 1080x1920 con ffmpeg.
+  - Seguir la cara del hablante para centrar el recorte vertical.
   - Descargar videos de YouTube con yt-dlp (máximo 1080p).
 
 Todo corre 100% local, sin APIs de pago ni claves.
@@ -18,6 +19,10 @@ import re
 import subprocess
 import sys
 import tempfile
+
+# Silencia el aviso de huggingface_hub sobre symlinks en Windows: el caché
+# funciona igual sin ellos, el aviso solo confunde.
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 # ---------------------------------------------------------------------------
 # Utilidades
@@ -368,22 +373,113 @@ def generar_subtitulos_ass(segmentos, inicio_clip, fin_clip, ruta_salida):
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Detección de rostros (OpenCV) — para que el recorte siga la cara
+# ---------------------------------------------------------------------------
+
+def detectar_rostros(ruta_video, inicio, fin, intervalo=2.0):
+    """Detecta la posición horizontal de la cara principal en un fragmento.
+
+    Muestrea un fotograma cada `intervalo` segundos y devuelve una lista
+    de (t, x) donde t son segundos desde `inicio` y x la posición del
+    centro de la cara como fracción del ancho (0.0-1.0). Devuelve []
+    si no se encuentra ninguna cara o si OpenCV no está instalado.
+    Solo mide dónde está la cara en cada momento; no identifica a nadie.
+    """
+    try:
+        import cv2
+    except ImportError:
+        return []
+    muestras = []
+    try:
+        cascada = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        if cascada.empty():
+            return []
+        captura = cv2.VideoCapture(ruta_video)
+        if not captura.isOpened():
+            return []
+        t = inicio
+        while t <= fin:
+            captura.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
+            ok, cuadro = captura.read()
+            if not ok or cuadro is None:
+                t += intervalo
+                continue
+            alto, ancho = cuadro.shape[:2]
+            escala = 640 / max(1, ancho)
+            pequeno = cv2.resize(cuadro, (640, max(1, int(alto * escala))))
+            gris = cv2.cvtColor(pequeno, cv2.COLOR_BGR2GRAY)
+            caras = cascada.detectMultiScale(
+                gris, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
+            if len(caras):
+                # La cara más grande (la principal)
+                x, _y, w, _h = max(caras, key=lambda c: c[2] * c[3])
+                centro = (x + w / 2) / pequeno.shape[1]
+                muestras.append((t - inicio, min(1.0, max(0.0, centro))))
+            t += intervalo
+        captura.release()
+    except Exception:
+        pass
+    # Suavizar: media móvil de 3 para que el recorte no salte de lado a lado
+    if len(muestras) >= 3:
+        suavizadas = []
+        for i, (t, _x) in enumerate(muestras):
+            vecinos = [muestras[j][1] for j in range(
+                max(0, i - 1), min(len(muestras), i + 2))]
+            suavizadas.append((t, sum(vecinos) / len(vecinos)))
+        return suavizadas
+    return muestras
+
+
+def _expresion_rostros(muestras, ancho_salida):
+    """Expresión ffmpeg para el x del recorte siguiendo las `muestras`.
+
+    `muestras` es la lista de (t, x) de detectar_rostros (t en segundos
+    desde el inicio del clip, x fracción del ancho). Devuelve None si
+    no hay muestras. Interpola linealmente entre muestras para que el
+    recorte se mueva de forma suave.
+    """
+    if not muestras:
+        return None
+    if len(muestras) == 1:
+        posicion = "%.4f" % muestras[0][1]
+    else:
+        posicion = "%.4f" % muestras[-1][1]
+        for k in range(len(muestras) - 2, -1, -1):
+            t0, x0 = muestras[k]
+            t1, x1 = muestras[k + 1]
+            interp = ("%.4f+(%.4f-%.4f)*(t-%.3f)/%.3f"
+                      % (x0, x1, x0, t0, max(0.001, t1 - t0)))
+            posicion = "if(lt(t,%.3f),%s,%s)" % (t1, interp, posicion)
+    return ("clip((%s)*iw-%d,0,iw-%d)"
+            % (posicion, ancho_salida // 2, ancho_salida))
+
+
 # Exportación con ffmpeg
 # ---------------------------------------------------------------------------
 
 def exportar_clip(ruta_video, inicio, fin, ruta_ass, ruta_salida,
-                  progreso=None):
-    """Exporta un clip vertical 1080x1920 con subtítulos quemados.
+                  progreso=None, rostros=None, ancho=1080, alto=1920,
+                  con_subtitulos=True):
+    """Exporta un clip vertical con subtítulos quemados.
 
     `progreso` es una función opcional que recibe un valor 0.0-1.0.
-    Devuelve la ruta del clip exportado.
+    `rostros` es la lista de (t, x) de detectar_rostros: si se da, el
+    recorte vertical sigue la cara en vez de centrarse. `ancho`/`alto`
+    son el tamaño de salida (1080x1920 por defecto). Devuelve la ruta
+    del clip exportado.
     """
     duracion = max(0.1, fin - inicio)
-    filtro = (
-        "scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,subtitles='%s'"
-        % _escapar_ruta_subtitulos(ruta_ass)
-    )
+    expresion = _expresion_rostros(rostros, ancho) if rostros else None
+    if expresion:
+        recorte = "crop=%d:%d:x='%s'" % (ancho, alto, expresion)
+    else:
+        recorte = "crop=%d:%d" % (ancho, alto)
+    filtro = ("scale=%d:%d:force_original_aspect_ratio=increase,%s"
+              % (ancho, alto, recorte))
+    if con_subtitulos and ruta_ass:
+        filtro += ",subtitles='%s'" % _escapar_ruta_subtitulos(ruta_ass)
     comando = [
         "ffmpeg", "-y",
         "-ss", "%.3f" % inicio,
@@ -420,6 +516,26 @@ def exportar_clip(ruta_video, inicio, fin, ruta_ass, ruta_salida,
     if progreso:
         progreso(1.0)
     return ruta_salida
+
+
+def generar_miniatura(ruta_video, instante, ruta_salida,
+                      ancho=135, alto=240):
+    """Guarda un fotograma vertical (9:16) del `instante` como imagen."""
+    filtro = ("scale=1080:1920:force_original_aspect_ratio=increase,"
+              "crop=1080:1920,scale=%d:%d" % (ancho, alto))
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-ss", "%.3f" % instante,
+         "-i", ruta_video, "-frames:v", "1", "-vf", filtro, ruta_salida],
+        check=True)
+    return ruta_salida
+
+
+def generar_vista_previa(ruta_video, inicio, fin, ruta_salida,
+                         rostros=None, progreso=None):
+    """Genera una vista previa rápida (540x960, sin subtítulos)."""
+    return exportar_clip(ruta_video, inicio, fin, None, ruta_salida,
+                         progreso=progreso, rostros=rostros,
+                         ancho=540, alto=960, con_subtitulos=False)
 
 
 # ---------------------------------------------------------------------------

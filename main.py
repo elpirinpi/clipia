@@ -10,11 +10,17 @@ con subtítulos quemados.
 
 import os
 import queue
+import shutil
+import subprocess
+import sys
+import tempfile
 import threading
+import traceback
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
+from PIL import Image
 
 import clipia_core as core
 
@@ -152,6 +158,9 @@ class AppClipIA(ctk.CTk):
         self.seleccion = []        # lista de tk.BooleanVar, una por clip
         self.carpeta_salida = _crear_carpeta_salida()
         self.ocupado = False
+        self.seguir_rostros = tk.BooleanVar(value=True)
+        self._imagenes_miniaturas = []
+        self._dir_miniaturas = None
         self._cola_ui = queue.Queue()
         self.after(100, self._procesar_cola)
 
@@ -250,6 +259,13 @@ class AppClipIA(ctk.CTk):
             command=self._elegir_salida,
         ).pack(anchor="w", padx=16, pady=(8, 4))
 
+        self.check_rostros = ctk.CTkCheckBox(
+            izquierda, text="Seguir rostros al exportar",
+            variable=self.seguir_rostros,
+            font=ctk.CTkFont(size=12), text_color=TEXTO,
+            checkbox_width=18, checkbox_height=18)
+        self.check_rostros.pack(anchor="w", padx=16, pady=(12, 4))
+
         # --- Columna derecha: lista de clips ---
         derecha = ctk.CTkFrame(cuerpo, fg_color=PANEL, corner_radius=12)
         derecha.pack(side="left", fill="both", expand=True)
@@ -318,10 +334,16 @@ class AppClipIA(ctk.CTk):
         try:
             while True:
                 funcion, args, kwargs = self._cola_ui.get_nowait()
-                funcion(*args, **kwargs)
+                try:
+                    funcion(*args, **kwargs)
+                except Exception:
+                    # Un callback fallido no puede matar el actualizador:
+                    # se registra y se sigue con el siguiente.
+                    traceback.print_exc()
         except queue.Empty:
             pass
-        self.after(100, self._procesar_cola)
+        finally:
+            self.after(100, self._procesar_cola)
 
     def _ir_paso(self, indice):
         for i, etiqueta in enumerate(self._etiquetas_pasos):
@@ -335,7 +357,7 @@ class AppClipIA(ctk.CTk):
     def _estado(self, texto, progreso=None):
         self.etiqueta_estado.configure(text=texto)
         if progreso is not None:
-            self.barra_progreso.set(progreso)
+            self.barra_progreso.set(min(1.0, max(0.0, progreso)))
 
     def _bloquear(self, bloqueado):
         self.ocupado = bloqueado
@@ -434,6 +456,9 @@ class AppClipIA(ctk.CTk):
             if not self.candidatos:
                 raise RuntimeError("No se encontraron momentos para clips.")
 
+            self._ui(self._estado, "Generando miniaturas…", 0.98)
+            self._generar_miniaturas()
+
             self._ui(self._mostrar_clips)
             self._ui(self._ir_paso, 2)
             self._ui(self._estado,
@@ -447,14 +472,43 @@ class AppClipIA(ctk.CTk):
         finally:
             self._ui(self._bloquear, False)
 
+    def _generar_miniaturas(self):
+        """Genera una miniatura vertical por clip (corre en el hilo)."""
+        if self._dir_miniaturas:
+            shutil.rmtree(self._dir_miniaturas, ignore_errors=True)
+        self._dir_miniaturas = tempfile.mkdtemp(prefix="clipia_miniaturas_")
+        for i, clip in enumerate(self.candidatos, start=1):
+            ruta = os.path.join(self._dir_miniaturas, "clip%02d.jpg" % i)
+            try:
+                core.generar_miniatura(
+                    self.ruta_video, (clip["start"] + clip["end"]) / 2, ruta)
+                clip["miniatura"] = ruta
+            except Exception:
+                clip["miniatura"] = None
+
     def _mostrar_clips(self):
         for widget in self.lista_clips.winfo_children():
             widget.destroy()
         self.seleccion = []
+        self._imagenes_miniaturas = []
         for i, clip in enumerate(self.candidatos, start=1):
             tarjeta = ctk.CTkFrame(self.lista_clips, fg_color=TARJETA,
                                    corner_radius=10)
             tarjeta.pack(fill="x", padx=8, pady=5)
+
+            miniatura = clip.get("miniatura")
+            if miniatura and os.path.isfile(miniatura):
+                try:
+                    imagen = ctk.CTkImage(Image.open(miniatura),
+                                          size=(72, 128))
+                    self._imagenes_miniaturas.append(imagen)
+                    ctk.CTkLabel(tarjeta, image=imagen, text="").pack(
+                        side="left", padx=(10, 4), pady=10)
+                except Exception:
+                    pass
+
+            cuerpo = ctk.CTkFrame(tarjeta, fg_color="transparent")
+            cuerpo.pack(side="left", fill="both", expand=True)
 
             variable = tk.BooleanVar(value=True)
             self.seleccion.append(variable)
@@ -463,7 +517,7 @@ class AppClipIA(ctk.CTk):
                 core.formato_hora(clip["start"]),
                 core.formato_hora(clip["end"]))
             ctk.CTkCheckBox(
-                tarjeta, text=titulo, variable=variable,
+                cuerpo, text=titulo, variable=variable,
                 font=ctk.CTkFont(size=13, weight="bold"), text_color=TEXTO,
                 checkbox_width=20, checkbox_height=20,
             ).pack(anchor="w", padx=12, pady=(10, 2))
@@ -472,9 +526,15 @@ class AppClipIA(ctk.CTk):
             if len(vista_previa) > 160:
                 vista_previa = vista_previa[:157] + "…"
             ctk.CTkLabel(
-                tarjeta, text=vista_previa, font=ctk.CTkFont(size=12),
-                text_color=SILENCIO, wraplength=560, justify="left",
+                cuerpo, text=vista_previa, font=ctk.CTkFont(size=12),
+                text_color=SILENCIO, wraplength=420, justify="left",
             ).pack(anchor="w", padx=36, pady=(0, 10))
+
+            ctk.CTkButton(
+                tarjeta, text="▶ Vista previa", fg_color=PANEL,
+                hover_color=BORDE, text_color=TEXTO, height=30, width=120,
+                command=lambda c=clip: self._vista_previa(c),
+            ).pack(side="right", padx=12, pady=10)
 
         self.etiqueta_conteo.configure(
             text="%d clips · %s de video"
@@ -505,6 +565,51 @@ class AppClipIA(ctk.CTk):
 
         DialogoClipManual(self, self.duracion_video, agregar)
 
+    def _vista_previa(self, clip):
+        if self.ocupado:
+            messagebox.showinfo(
+                "ClipIA", "Espera a que termine el trabajo en curso.")
+            return
+        if not self.ruta_video:
+            return
+        self._bloquear(True)
+        self._estado("Generando vista previa…", 0)
+        threading.Thread(
+            target=self._hilo_vista_previa,
+            args=(clip, self.ruta_video, self.seguir_rostros.get()),
+            daemon=True).start()
+
+    def _hilo_vista_previa(self, clip, ruta_video, seguir_rostros):
+        try:
+            rostros = None
+            if seguir_rostros:
+                rostros = core.detectar_rostros(
+                    ruta_video, clip["start"], clip["end"])
+            tmp = tempfile.mkdtemp(prefix="clipia_vista_previa_")
+            ruta = os.path.join(tmp, "vista_previa.mp4")
+            core.generar_vista_previa(
+                ruta_video, clip["start"], clip["end"], ruta, rostros=rostros,
+                progreso=lambda p: self._ui(self._estado,
+                                            "Generando vista previa…", p))
+            self._ui(self._abrir_archivo, ruta)
+            self._ui(self._estado, "Vista previa lista.", 1.0)
+        except Exception as error:  # noqa: BLE001 - mostrar cualquier error
+            detalle = "%s: %s" % (type(error).__name__, error)
+            self._ui(self._estado, "Error: %s" % detalle, 0)
+            self._ui(messagebox.showerror, "ClipIA", detalle)
+        finally:
+            self._ui(self._bloquear, False)
+
+    @staticmethod
+    def _abrir_archivo(ruta):
+        """Abre un archivo con el programa predeterminado del sistema."""
+        if sys.platform.startswith("win"):
+            os.startfile(ruta)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", ruta])
+        else:
+            subprocess.run(["xdg-open", ruta])
+
     def _exportar(self):
         if self.ocupado:
             return
@@ -516,13 +621,17 @@ class AppClipIA(ctk.CTk):
         self._asegurar_carpeta_salida()
         self._bloquear(True)
         self._ir_paso(3)
-        threading.Thread(target=self._hilo_exportar, args=(elegidos,),
-                         daemon=True).start()
+        threading.Thread(
+            target=self._hilo_exportar,
+            args=(elegidos, self.ruta_video, list(self.segmentos),
+                  self.seguir_rostros.get()),
+            daemon=True).start()
 
-    def _hilo_exportar(self, elegidos):
+    def _hilo_exportar(self, elegidos, ruta_video, segmentos,
+                       seguir_rostros):
         try:
             os.makedirs(self.carpeta_salida, exist_ok=True)
-            base = os.path.splitext(os.path.basename(self.ruta_video))[0]
+            base = os.path.splitext(os.path.basename(ruta_video))[0]
             total = len(elegidos)
             for i, clip in enumerate(elegidos, start=1):
                 nombre = "%s_clip%02d_%s-%s.mp4" % (
@@ -530,16 +639,25 @@ class AppClipIA(ctk.CTk):
                     core.formato_hora(clip["end"]).replace(":", ""))
                 ruta_ass = os.path.join(self.carpeta_salida, "clip_tmp.ass")
                 core.generar_subtitulos_ass(
-                    self.segmentos, clip["start"], clip["end"], ruta_ass)
+                    segmentos, clip["start"], clip["end"], ruta_ass)
                 ruta_salida = os.path.join(self.carpeta_salida, nombre)
+
+                rostros = None
+                if seguir_rostros:
+                    self._ui(self._estado,
+                             "Detectando rostros en el clip %d de %d…"
+                             % (i, total), (i - 1) / total)
+                    rostros = core.detectar_rostros(
+                        ruta_video, clip["start"], clip["end"])
 
                 def progreso(p, i=i, total=total):
                     self._ui(self._estado,
                              "Exportando clip %d de %d…" % (i, total),
                              (i - 1 + p) / total)
 
-                core.exportar_clip(self.ruta_video, clip["start"], clip["end"],
-                                   ruta_ass, ruta_salida, progreso=progreso)
+                core.exportar_clip(ruta_video, clip["start"], clip["end"],
+                                   ruta_ass, ruta_salida, progreso=progreso,
+                                   rostros=rostros)
                 if os.path.exists(ruta_ass):
                     os.remove(ruta_ass)
             self._ui(self._estado,

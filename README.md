@@ -16,18 +16,24 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
    timestamps por palabra) y detecta los 10 mejores momentos para clips
    de 30 a 90 segundos, puntuados por densidad de habla, exclamaciones,
    preguntas y palabras gancho.
-3. **Clips** — Revisa la lista, marca los que quieres, usa
-   «Seleccionar todo» o crea un clip manual con hora de inicio y fin.
+3. **Clips** — Revisa la lista con una miniatura vertical de cada
+   momento, marca los que quieres, usa «Seleccionar todo» o crea un
+   clip manual con hora de inicio y fin. Cada clip tiene un botón
+   «▶ Vista previa» que genera una versión rápida (540x960) y la abre
+   en tu reproductor para verla antes de exportar.
 4. **Exportar** — «Descargar clips» exporta los seleccionados en
    vertical 1080x1920, con subtítulos quemados estilo Shorts (negrita,
-   blanco con borde negro, abajo al centro), H.264 + AAC.
+   blanco con borde negro, abajo al centro), H.264 + AAC. Con la
+   opción «Seguir rostros» activada, el recorte vertical sigue la
+   cara del hablante en vez de centrarse siempre en la imagen; si no
+   se detecta ninguna cara, usa el centro como antes.
 
 ## Requisitos
 
 - Windows 10/11 (64 bits)
 - Conexión a internet solo para la instalación y para descargar videos
   de YouTube. La transcripción y la exportación son locales.
-- ~1 GB de espacio libre (dependencias + modelo de voz de ~150 MB).
+- ~1.2 GB de espacio libre (dependencias + modelo de voz de ~150 MB).
 
 ## Instalación
 
@@ -51,7 +57,10 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
 2. Elige un video con «Examinar…» o pega una URL de YouTube.
 3. Pulsa **«Analizar video»**. La primera vez descarga el modelo de
    voz (~150 MB, unos segundos con buena conexión).
-4. Marca los clips que quieres y pulsa **«Descargar clips»**.
+4. Marca los clips que quieres (puedes previsualizar cada uno con
+   «▶ Vista previa») y pulsa **«Descargar clips»**. Si el video es
+   una persona hablando, deja activado «Seguir rostros» para que el
+   recorte siga su cara.
 5. Los clips quedan en `Videos\ClipIA` (puedes cambiar la carpeta
    antes de exportar).
 
@@ -80,7 +89,7 @@ voz base (~150 MB).
 | Archivo | Descripción |
 |---|---|
 | `main.py` | Interfaz gráfica (CustomTkinter, tema oscuro) |
-| `clipia_core.py` | Transcripción, detección de momentos, subtítulos, exportación, descarga |
+| `clipia_core.py` | Transcripción, detección de momentos, subtítulos, seguimiento de rostros, exportación, vista previa, descarga |
 | `test_pipeline.py` | Prueba de punta a punta sin interfaz gráfica |
 | `requirements.txt` | Dependencias con versiones fijadas |
 | `setup.bat` | Instalador para Windows |
@@ -122,10 +131,7 @@ voz base (~150 MB).
 
 - Puntuación de momentos con un LLM local (vía Ollama): elegir los
   clips por contenido y no solo por densidad de habla y palabras gancho.
-- Recorte vertical con seguimiento de rostros (centrar al hablante en
-  vez de centrar la imagen).
 - Subtítulos con resaltado palabra por palabra (estilo karaoke).
-- Vista previa de cada clip antes de exportar.
 - Exportación en lote con cola y cancelación.
 - Descarga de YouTube con cookies del navegador (para cuando YouTube
   pide verificar que no eres un bot).

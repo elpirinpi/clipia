@@ -139,6 +139,32 @@ def _crear_carpeta_salida():
     return candidatos[0]
 
 
+def _detectar_con_limite(ruta_video, inicio, fin, progreso, timeout=60):
+    """Detecta rostros con un límite de tiempo.
+
+    Si la detección tarda más de `timeout` segundos (por ejemplo, un
+    video que se resiste), se abandona y se devuelve [] para que la
+    exportación siga con el recorte centrado: la app nunca se queda
+    congelada esperando.
+    """
+    resultado = []
+
+    def trabajo():
+        try:
+            resultado.extend(core.detectar_rostros(
+                ruta_video, inicio, fin, progreso=progreso))
+        except Exception:
+            pass
+
+    hilo = threading.Thread(target=trabajo, daemon=True)
+    hilo.start()
+    hilo.join(timeout)
+    if hilo.is_alive():
+        print("ClipIA: la detección de rostros tardó más de %d s, "
+              "se sigue con el recorte centrado." % timeout, file=sys.stderr)
+    return resultado
+
+
 class AppClipIA(ctk.CTk):
     """Ventana principal de ClipIA."""
 
@@ -583,7 +609,7 @@ class AppClipIA(ctk.CTk):
         try:
             rostros = None
             if seguir_rostros:
-                rostros = core.detectar_rostros(
+                rostros = _detectar_con_limite(
                     ruta_video, clip["start"], clip["end"],
                     progreso=lambda p: self._ui(
                         self._estado,
@@ -652,7 +678,7 @@ class AppClipIA(ctk.CTk):
                             self._estado,
                             "Detectando rostros en el clip %d de %d… (%d%%)"
                             % (i, total, int(p * 100)), (i - 1) / total)
-                    rostros = core.detectar_rostros(
+                    rostros = _detectar_con_limite(
                         ruta_video, clip["start"], clip["end"],
                         progreso=progreso_rostros)
 

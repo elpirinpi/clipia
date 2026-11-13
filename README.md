@@ -116,11 +116,15 @@ voz base (~150 MB).
   ffmpeg con `winget install Gyan.FFmpeg`.
 - **«No se detectó habla en el video»**: el video no tiene voz clara
   en español, o el audio está muy bajo. Prueba con otro video.
-- **Se queda en «Detectando rostros»**: en la v1.1.0 la detección
-  buscaba de un lado a otro en el video y eso se congela con algunos
-  MP4 en Windows. Desde la v1.1.1 lee el fragmento de una sola vez y
-  muestra el porcentaje. Si pasa de todos modos, desmarca
-  «Seguir rostros» y exporta con el recorte centrado de siempre.
+- **Se queda en «Detectando rostros»**: en la v1.1.0 y v1.1.1 la
+  detección leía el video con OpenCV y eso se congela con algunos
+  MP4 en Windows. Desde la v1.1.2 los fotogramas se extraen con
+  ffmpeg (el mismo programa que ya usa la app para exportar) y
+  OpenCV solo detecta la cara en cada foto; además, la detección
+  tiene un límite de 60 segundos por clip: si un video se resiste,
+  la app sigue con el recorte centrado en vez de quedarse congelada.
+  Si pasa de todos modos, desmarca «Seguir rostros» y exporta con
+  el recorte centrado de siempre.
 - **La transcripción es lenta**: es normal en CPU. Con una GPU
   compatible con CUDA es mucho más rápida.
 - **Los subtítulos no se ven**: el ffmpeg instalado debe incluir

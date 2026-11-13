@@ -16,6 +16,7 @@ Todo corre 100% local, sin APIs de pago ni claves.
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -380,13 +381,14 @@ def generar_subtitulos_ass(segmentos, inicio_clip, fin_clip, ruta_salida):
 def detectar_rostros(ruta_video, inicio, fin, intervalo=2.0, progreso=None):
     """Detecta la posición horizontal de la cara principal en un fragmento.
 
-    Lee el fragmento una sola vez de principio a fin (sin buscar de un
-    lado a otro, porque buscar repetido se congela con algunos videos
-    en Windows) y toma una muestra cada `intervalo` segundos. Devuelve
-    una lista de (t, x) donde t son segundos desde `inicio` y x la
-    posición del centro de la cara como fracción del ancho (0.0-1.0).
-    Devuelve [] si no se encuentra ninguna cara o si OpenCV no está
-    instalado. `progreso` es una función opcional que recibe un valor
+    Extrae fotogramas con ffmpeg (el mismo programa que ya usa la app
+    para exportar, fiable en cualquier PC) y detecta la cara en cada
+    foto con OpenCV. No usa la lectura de video de OpenCV, que se
+    congela con algunos MP4 en Windows. Devuelve una lista de (t, x)
+    donde t son segundos desde `inicio` y x la posición del centro de
+    la cara como fracción del ancho (0.0-1.0). Devuelve [] si no se
+    encuentra ninguna cara, si OpenCV no está instalado o si algo
+    falla. `progreso` es una función opcional que recibe un valor
     0.0-1.0. Solo mide dónde está la cara en cada momento; no identifica
     a nadie.
     """
@@ -400,50 +402,39 @@ def detectar_rostros(ruta_video, inicio, fin, intervalo=2.0, progreso=None):
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
         if cascada.empty():
             return []
-        # En Windows el backend por defecto (MSMF) busca muy lento o se
-        # congela con algunos MP4; ffmpeg es fiable para leer video.
-        captura = cv2.VideoCapture(ruta_video, cv2.CAP_FFMPEG)
-        if not captura.isOpened():
-            captura = cv2.VideoCapture(ruta_video)
-        if not captura.isOpened():
-            return []
         duracion = max(0.1, fin - inicio)
         # Como mucho 45 muestras por clip, aunque el clip sea largo.
         intervalo = max(intervalo, duracion / 45)
-        fps = captura.get(cv2.CAP_PROP_FPS)
-        if not fps or fps <= 0:
-            fps = 30.0
-        # Fotogramas entre muestras; los intermedios se saltan sin
-        # decodificar (grab), así la lectura es rápida.
-        cada = max(1, int(round(fps * intervalo)))
-        captura.set(cv2.CAP_PROP_POS_MSEC, inicio * 1000)
-        n = 0
-        while True:
-            t = n / fps
-            if t > duracion:
-                break
-            if n % cada == 0:
-                ok, cuadro = captura.read()
-                if not ok or cuadro is None:
-                    break
-                alto, ancho = cuadro.shape[:2]
-                escala = 640 / max(1, ancho)
-                pequeno = cv2.resize(cuadro, (640, max(1, int(alto * escala))))
-                gris = cv2.cvtColor(pequeno, cv2.COLOR_BGR2GRAY)
+        tmp = tempfile.mkdtemp(prefix="clipia_rostros_")
+        try:
+            # Un fotograma cada `intervalo` segundos, reducido a 640 px.
+            patron = os.path.join(tmp, "f_%03d.jpg")
+            subprocess.run(
+                ["ffmpeg", "-y", "-v", "error",
+                 "-ss", "%.3f" % inicio, "-t", "%.3f" % duracion,
+                 "-i", ruta_video,
+                 "-vf", "fps=%.4f,scale=640:-1" % (1.0 / intervalo),
+                 "-q:v", "5", patron],
+                timeout=60, check=True)
+            archivos = sorted(
+                f for f in os.listdir(tmp) if f.endswith(".jpg"))
+            for i, nombre in enumerate(archivos):
+                t = min(duracion, i * intervalo)
+                imagen = cv2.imread(os.path.join(tmp, nombre))
+                if imagen is None:
+                    continue
+                gris = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
                 caras = cascada.detectMultiScale(
                     gris, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
                 if len(caras):
                     # La cara más grande (la principal)
                     x, _y, w, _h = max(caras, key=lambda c: c[2] * c[3])
-                    centro = (x + w / 2) / pequeno.shape[1]
+                    centro = (x + w / 2) / imagen.shape[1]
                     muestras.append((t, min(1.0, max(0.0, centro))))
                 if progreso:
-                    progreso(min(1.0, t / duracion))
-            else:
-                if not captura.grab():
-                    break
-            n += 1
-        captura.release()
+                    progreso(min(1.0, (i + 1) / max(1, len(archivos))))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
     except Exception:
         pass
     # Suavizar: media móvil de 3 para que el recorte no salte de lado a lado
@@ -467,6 +458,10 @@ def _expresion_rostros(muestras, ancho_salida):
     """
     if not muestras:
         return None
+    # Como mucho 12 puntos en la expresión, para que el filtro sea corto.
+    if len(muestras) > 12:
+        paso = (len(muestras) - 1) / 11
+        muestras = [muestras[int(round(k * paso))] for k in range(12)]
     if len(muestras) == 1:
         posicion = "%.4f" % muestras[0][1]
     else:

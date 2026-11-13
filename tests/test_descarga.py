@@ -33,3 +33,16 @@ def test_descargar_youtube_sin_requested_downloads_usa_prepare_filename(
         ruta = core.descargar_youtube("https://www.youtube.com/watch?v=abc",
                                       str(tmp_path))
     assert ruta == str(tmp_path / "video.mp4")
+
+
+def test_descargar_youtube_con_noplaylist(tmp_path):
+    """B2: las opciones incluyen noplaylist (URLs con &list= no deben
+    intentar descargar la lista entera)."""
+    info = {"requested_downloads": [{"filepath": str(tmp_path / "v.mp4")}]}
+    with mock.patch("yt_dlp.YoutubeDL") as mock_ydl_cls:
+        instancia = mock_ydl_cls.return_value.__enter__.return_value
+        instancia.extract_info.return_value = info
+        core.descargar_youtube(
+            "https://www.youtube.com/watch?v=abc&list=PL123", str(tmp_path))
+    opciones = mock_ydl_cls.call_args.args[0]
+    assert opciones.get("noplaylist") is True

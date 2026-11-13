@@ -501,7 +501,7 @@ def exportar_clip(ruta_video, inicio, fin, ruta_ass, ruta_salida,
     if con_subtitulos and ruta_ass:
         filtro += ",subtitles='%s'" % _escapar_ruta_subtitulos(ruta_ass)
     comando = [
-        "ffmpeg", "-y",
+        "ffmpeg", "-y", "-v", "error",
         "-ss", "%.3f" % inicio,
         "-t", "%.3f" % duracion,
         "-i", ruta_video,
@@ -513,12 +513,18 @@ def exportar_clip(ruta_video, inicio, fin, ruta_ass, ruta_salida,
         "-progress", "pipe:1", "-nostats",
         ruta_salida,
     ]
+    # Los mensajes de ffmpeg van por el MISMO tubo que el avance: si
+    # fueran por un tubo aparte que nadie lee, en Windows ese tubo se
+    # llena (unos 4 KB) y ffmpeg se queda esperando para siempre, con
+    # la barra congelada y la exportación sin terminar.
     proceso = subprocess.Popen(
-        comando, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True,
     )
-    error = ""
+    cola_error = ""
     if proceso.stdout is not None:
         for linea in proceso.stdout:
+            cola_error = (cola_error + linea)[-4000:]
             linea = linea.strip()
             if linea.startswith("out_time_ms="):
                 try:
@@ -529,10 +535,10 @@ def exportar_clip(ruta_video, inicio, fin, ruta_ass, ruta_salida,
                     pass
             elif linea.startswith("progress=end") and progreso:
                 progreso(1.0)
-    _salida, error = proceso.communicate()
+    proceso.wait()
     if proceso.returncode != 0:
         raise RuntimeError("ffmpeg falló al exportar el clip:\n%s"
-                           % (error or "").strip()[-2000:])
+                           % cola_error.strip()[-2000:])
     if progreso:
         progreso(1.0)
     return ruta_salida

@@ -116,6 +116,12 @@ voz base (~150 MB).
   ffmpeg con `winget install Gyan.FFmpeg`.
 - **«No se detectó habla en el video»**: el video no tiene voz clara
   en español, o el audio está muy bajo. Prueba con otro video.
+- **La barra de progreso se congela al exportar o previsualizar**:
+  en la v1.1.2 y anteriores, ffmpeg escribía sus mensajes en un tubo
+  aparte que nadie leía; en Windows ese tubo se llena y ffmpeg se
+  queda esperando para siempre. Desde la v1.1.3 sus mensajes van por
+  el mismo tubo del avance, así que la barra se mueve y la
+  exportación termina.
 - **Se queda en «Detectando rostros»**: en la v1.1.0 y v1.1.1 la
   detección leía el video con OpenCV y eso se congela con algunos
   MP4 en Windows. Desde la v1.1.2 los fotogramas se extraen con

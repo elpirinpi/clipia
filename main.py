@@ -584,7 +584,10 @@ class AppClipIA(ctk.CTk):
             rostros = None
             if seguir_rostros:
                 rostros = core.detectar_rostros(
-                    ruta_video, clip["start"], clip["end"])
+                    ruta_video, clip["start"], clip["end"],
+                    progreso=lambda p: self._ui(
+                        self._estado,
+                        "Detectando rostros… (%d%%)" % int(p * 100), 0))
             tmp = tempfile.mkdtemp(prefix="clipia_vista_previa_")
             ruta = os.path.join(tmp, "vista_previa.mp4")
             core.generar_vista_previa(
@@ -644,11 +647,14 @@ class AppClipIA(ctk.CTk):
 
                 rostros = None
                 if seguir_rostros:
-                    self._ui(self._estado,
-                             "Detectando rostros en el clip %d de %d…"
-                             % (i, total), (i - 1) / total)
+                    def progreso_rostros(p, i=i, total=total):
+                        self._ui(
+                            self._estado,
+                            "Detectando rostros en el clip %d de %d… (%d%%)"
+                            % (i, total, int(p * 100)), (i - 1) / total)
                     rostros = core.detectar_rostros(
-                        ruta_video, clip["start"], clip["end"])
+                        ruta_video, clip["start"], clip["end"],
+                        progreso=progreso_rostros)
 
                 def progreso(p, i=i, total=total):
                     self._ui(self._estado,

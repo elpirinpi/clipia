@@ -377,14 +377,18 @@ def generar_subtitulos_ass(segmentos, inicio_clip, fin_clip, ruta_salida):
 # Detección de rostros (OpenCV) — para que el recorte siga la cara
 # ---------------------------------------------------------------------------
 
-def detectar_rostros(ruta_video, inicio, fin, intervalo=2.0):
+def detectar_rostros(ruta_video, inicio, fin, intervalo=2.0, progreso=None):
     """Detecta la posición horizontal de la cara principal en un fragmento.
 
-    Muestrea un fotograma cada `intervalo` segundos y devuelve una lista
-    de (t, x) donde t son segundos desde `inicio` y x la posición del
-    centro de la cara como fracción del ancho (0.0-1.0). Devuelve []
-    si no se encuentra ninguna cara o si OpenCV no está instalado.
-    Solo mide dónde está la cara en cada momento; no identifica a nadie.
+    Lee el fragmento una sola vez de principio a fin (sin buscar de un
+    lado a otro, porque buscar repetido se congela con algunos videos
+    en Windows) y toma una muestra cada `intervalo` segundos. Devuelve
+    una lista de (t, x) donde t son segundos desde `inicio` y x la
+    posición del centro de la cara como fracción del ancho (0.0-1.0).
+    Devuelve [] si no se encuentra ninguna cara o si OpenCV no está
+    instalado. `progreso` es una función opcional que recibe un valor
+    0.0-1.0. Solo mide dónde está la cara en cada momento; no identifica
+    a nadie.
     """
     try:
         import cv2
@@ -396,28 +400,49 @@ def detectar_rostros(ruta_video, inicio, fin, intervalo=2.0):
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
         if cascada.empty():
             return []
-        captura = cv2.VideoCapture(ruta_video)
+        # En Windows el backend por defecto (MSMF) busca muy lento o se
+        # congela con algunos MP4; ffmpeg es fiable para leer video.
+        captura = cv2.VideoCapture(ruta_video, cv2.CAP_FFMPEG)
+        if not captura.isOpened():
+            captura = cv2.VideoCapture(ruta_video)
         if not captura.isOpened():
             return []
-        t = inicio
-        while t <= fin:
-            captura.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
-            ok, cuadro = captura.read()
-            if not ok or cuadro is None:
-                t += intervalo
-                continue
-            alto, ancho = cuadro.shape[:2]
-            escala = 640 / max(1, ancho)
-            pequeno = cv2.resize(cuadro, (640, max(1, int(alto * escala))))
-            gris = cv2.cvtColor(pequeno, cv2.COLOR_BGR2GRAY)
-            caras = cascada.detectMultiScale(
-                gris, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
-            if len(caras):
-                # La cara más grande (la principal)
-                x, _y, w, _h = max(caras, key=lambda c: c[2] * c[3])
-                centro = (x + w / 2) / pequeno.shape[1]
-                muestras.append((t - inicio, min(1.0, max(0.0, centro))))
-            t += intervalo
+        duracion = max(0.1, fin - inicio)
+        # Como mucho 45 muestras por clip, aunque el clip sea largo.
+        intervalo = max(intervalo, duracion / 45)
+        fps = captura.get(cv2.CAP_PROP_FPS)
+        if not fps or fps <= 0:
+            fps = 30.0
+        # Fotogramas entre muestras; los intermedios se saltan sin
+        # decodificar (grab), así la lectura es rápida.
+        cada = max(1, int(round(fps * intervalo)))
+        captura.set(cv2.CAP_PROP_POS_MSEC, inicio * 1000)
+        n = 0
+        while True:
+            t = n / fps
+            if t > duracion:
+                break
+            if n % cada == 0:
+                ok, cuadro = captura.read()
+                if not ok or cuadro is None:
+                    break
+                alto, ancho = cuadro.shape[:2]
+                escala = 640 / max(1, ancho)
+                pequeno = cv2.resize(cuadro, (640, max(1, int(alto * escala))))
+                gris = cv2.cvtColor(pequeno, cv2.COLOR_BGR2GRAY)
+                caras = cascada.detectMultiScale(
+                    gris, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
+                if len(caras):
+                    # La cara más grande (la principal)
+                    x, _y, w, _h = max(caras, key=lambda c: c[2] * c[3])
+                    centro = (x + w / 2) / pequeno.shape[1]
+                    muestras.append((t, min(1.0, max(0.0, centro))))
+                if progreso:
+                    progreso(min(1.0, t / duracion))
+            else:
+                if not captura.grab():
+                    break
+            n += 1
         captura.release()
     except Exception:
         pass

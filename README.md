@@ -116,6 +116,11 @@ voz base (~150 MB).
   ffmpeg con `winget install Gyan.FFmpeg`.
 - **«No se detectó habla en el video»**: el video no tiene voz clara
   en español, o el audio está muy bajo. Prueba con otro video.
+- **Se queda en «Detectando rostros»**: en la v1.1.0 la detección
+  buscaba de un lado a otro en el video y eso se congela con algunos
+  MP4 en Windows. Desde la v1.1.1 lee el fragmento de una sola vez y
+  muestra el porcentaje. Si pasa de todos modos, desmarca
+  «Seguir rostros» y exporta con el recorte centrado de siempre.
 - **La transcripción es lenta**: es normal en CPU. Con una GPU
   compatible con CUDA es mucho más rápida.
 - **Los subtítulos no se ven**: el ffmpeg instalado debe incluir

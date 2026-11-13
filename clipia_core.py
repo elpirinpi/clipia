@@ -597,7 +597,14 @@ def descargar_youtube(url, carpeta_destino, progreso=None):
     }
     with yt_dlp.YoutubeDL(opciones) as ydl:
         info = ydl.extract_info(url, download=True)
-        ruta = ydl.prepare_filename(info)
+        # B1: tras el merge (p. ej. webm->mp4), prepare_filename()
+        # devuelve la ruta previa al merge (un .webm que ya no existe).
+        # requested_downloads trae la ruta del archivo final real.
+        descargas = info.get("requested_downloads") or []
+        if descargas and descargas[0].get("filepath"):
+            ruta = descargas[0]["filepath"]
+        else:
+            ruta = ydl.prepare_filename(info)
     if progreso:
         progreso(1.0)
     return ruta

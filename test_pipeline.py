@@ -201,9 +201,13 @@ def main() -> int:
     t0 = time.time()
     print("      Generando vista previa del primer clip...")
     ruta_preview = os.path.join(args.salida, "preview_clip01.mp4")
+    ruta_ass_preview = os.path.join(args.salida, "preview_clip01.ass")
+    core.generar_subtitulos_ass(segmentos, primer_clip["start"],
+                                primer_clip["end"], ruta_ass_preview)
     core.generar_vista_previa(args.video, primer_clip["start"],
                               primer_clip["end"], ruta_preview,
-                              rostros=rostros or None)
+                              rostros=rostros or None,
+                              ruta_ass=ruta_ass_preview)
     tiempos["vista_previa"] = time.time() - t0
     info_preview = verificar_clip(ruta_preview)
     preview_ok = (info_preview["ancho"] == 540
@@ -211,6 +215,18 @@ def main() -> int:
     print("      Vista previa: %dx%d, %.1f s -> %s"
           % (info_preview["ancho"], info_preview["alto"],
              tiempos["vista_previa"], "VÁLIDA" if preview_ok else "INVÁLIDA"))
+    # Fase 3: la previa lleva los subtítulos quemados (verificar
+    # píxeles de texto en un fotograma dentro de un evento).
+    inicios_preview = eventos_ass(ruta_ass_preview)
+    if inicios_preview:
+        medio = inicios_preview[len(inicios_preview) // 2]
+        foto_preview = extraer_fotograma(
+            ruta_preview, medio + 0.5,
+            os.path.join(args.salida, "preview_clip01_fotograma.png"))
+        pixeles_preview = contar_pixeles_subtitulo(foto_preview)
+        print("      Píxeles de subtítulo en la vista previa: %d"
+              % pixeles_preview)
+        preview_ok = preview_ok and pixeles_preview >= 300
 
     # 4. Exportación
     print("\n[4/5] Exportando %d clip(s)..."

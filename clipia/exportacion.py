@@ -179,9 +179,18 @@ def generar_vista_previa(ruta_video: str, inicio: float, fin: float,
                          rostros: list[tuple[float, float]] | None = None,
                          progreso: Callable[[float], None] | None = None,
                          encoder: str | None = None,
-                         cancelar: threading.Event | None = None) -> str:
-    """Genera una vista previa rápida (540x960, sin subtítulos)."""
-    return exportar_clip(ruta_video, inicio, fin, None, ruta_salida,
+                         cancelar: threading.Event | None = None,
+                         ruta_ass: str | None = None) -> str:
+    """Genera una vista previa rápida (540x960, con subtítulos).
+
+    Reutiliza la ruta de exportación con el mismo recorte (rostros o
+    centrado) y los mismos subtítulos que el clip final: el .ass es
+    el de la exportación (PlayRes 1080x1920) y libass lo escala al
+    marco de 540x960. Sin `ruta_ass` la previa sale sin subtítulos
+    (compatibilidad con llamadas antiguas).
+    """
+    return exportar_clip(ruta_video, inicio, fin, ruta_ass, ruta_salida,
                          progreso=progreso, rostros=rostros,
-                         ancho=540, alto=960, con_subtitulos=False,
+                         ancho=540, alto=960,
+                         con_subtitulos=ruta_ass is not None,
                          encoder=encoder, cancelar=cancelar)

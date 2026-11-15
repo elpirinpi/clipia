@@ -1512,14 +1512,16 @@ class AppClipIA(ctk.CTk):
             return
         self._bloquear(True)
         self._estado("Generando vista previa…", 0)
+        video = clip.get("video") or self.ruta_video
+        segmentos = self.segmentos_por_video.get(video, self.segmentos)
         threading.Thread(
             target=self._hilo_vista_previa,
-            args=(clip, clip.get("video") or self.ruta_video,
-                  self.seguir_rostros.get()),
+            args=(clip, video, self.seguir_rostros.get(), segmentos),
             daemon=True).start()
 
     def _hilo_vista_previa(self, clip: dict, ruta_video: str,
-                           seguir_rostros: bool) -> None:
+                           seguir_rostros: bool,
+                           segmentos: list[dict] | None = None) -> None:
         try:
             encoder = detectar_encoder(self.config.get("encoder", "auto"))
             rostros = None
@@ -1531,11 +1533,22 @@ class AppClipIA(ctk.CTk):
                         "Detectando rostros… (%d%%)" % int(p * 100), 0))
             tmp = tempfile.mkdtemp(prefix="clipia_vista_previa_")
             ruta = os.path.join(tmp, "vista_previa.mp4")
+            ruta_ass = None
+            if segmentos:
+                # La previa lleva los mismos subtítulos que el clip
+                # final (estilo y margen actuales de los ajustes).
+                ruta_ass = os.path.join(tmp, "vista_previa.ass")
+                core.generar_subtitulos_ass(
+                    segmentos, clip["start"], clip["end"], ruta_ass,
+                    estilo=self.config.get("estilo_subtitulos",
+                                           "Shorts clásico"),
+                    margen_vertical=self.config.get("margen_vertical",
+                                                    300))
             core.generar_vista_previa(
                 ruta_video, clip["start"], clip["end"], ruta, rostros=rostros,
                 progreso=lambda p: self._ui(self._estado,
                                             "Generando vista previa…", p),
-                encoder=encoder)
+                encoder=encoder, ruta_ass=ruta_ass)
             self._ui(self._abrir_archivo, ruta)
             self._ui(self._estado, "Vista previa lista.", 1.0)
         except Exception as error:  # noqa: BLE001 - mostrar cualquier error

@@ -39,6 +39,7 @@ from clipia.ollama import (
 )
 from clipia.procesos import matar_todos
 from clipia.rostros import detectar_rostros_con_limite
+from clipia.subtitulos import PRESETS_SUBTITULOS
 from clipia.transcripcion import IDIOMAS, MODELOS_WHISPER, ram_total_gb
 
 log = logging.getLogger("clipia.gui")
@@ -155,7 +156,7 @@ class DialogoAjustes(ctk.CTkToplevel):
     def __init__(self, padre, config: dict, al_guardar) -> None:
         super().__init__(padre)
         self.title("Ajustes")
-        self.geometry("400x560")
+        self.geometry("400x720")
         self.resizable(False, False)
         self.configure(fg_color=PANEL)
         self.transient(padre)
@@ -238,6 +239,38 @@ class DialogoAjustes(ctk.CTkToplevel):
             font=ctk.CTkFont(size=11), text_color=SILENCIO,
             justify="left").pack(padx=24, pady=(8, 4), anchor="w")
 
+        ctk.CTkLabel(self, text="Estilo de subtítulos",
+                     font=ctk.CTkFont(size=12), text_color=SILENCIO,
+                     anchor="w").pack(fill="x", padx=24, pady=(12, 4))
+        estilo_actual = config.get("estilo_subtitulos", "Shorts clásico")
+        if estilo_actual not in PRESETS_SUBTITULOS:
+            estilo_actual = "Shorts clásico"
+        self.variable_estilo = tk.StringVar(value=estilo_actual)
+        ctk.CTkOptionMenu(
+            self, values=list(PRESETS_SUBTITULOS),
+            variable=self.variable_estilo, width=320,
+        ).pack(padx=24)
+        ctk.CTkLabel(
+            self,
+            text="«Hormozi» y «Neón» resaltan cada palabra al hablarse\n"
+                 "(karaoke); «Hormozi» además usa MAYÚSCULAS.",
+            font=ctk.CTkFont(size=11), text_color=SILENCIO,
+            justify="left").pack(padx=24, pady=(8, 4), anchor="w")
+
+        ctk.CTkLabel(self, text="Margen vertical de subtítulos (px)",
+                     font=ctk.CTkFont(size=12), text_color=SILENCIO,
+                     anchor="w").pack(fill="x", padx=24, pady=(12, 4))
+        self.entrada_margen = ctk.CTkEntry(self, width=120)
+        self.entrada_margen.pack(anchor="w", padx=24)
+        self.entrada_margen.insert(
+            0, str(config.get("margen_vertical", 300)))
+        ctk.CTkLabel(
+            self,
+            text="Distancia desde abajo: 300 es lo habitual. Súbelo si\n"
+                 "los botones de TikTok tapan los subtítulos.",
+            font=ctk.CTkFont(size=11), text_color=SILENCIO,
+            justify="left").pack(padx=24, pady=(8, 4), anchor="w")
+
         ctk.CTkButton(
             self, text="Guardar", fg_color=AZUL, hover_color=AZUL_HOVER,
             command=self._guardar,
@@ -275,10 +308,20 @@ class DialogoAjustes(ctk.CTkToplevel):
         workers_elegido = self.variable_workers.get()
         valor_workers = next((v for t, v in self.OPCIONES_WORKERS
                               if t == workers_elegido), 0)
+        try:
+            valor_margen = int(self.entrada_margen.get().strip())
+        except ValueError:
+            valor_margen = 300
+        valor_margen = min(1500, max(0, valor_margen))
+        estilo_elegido = self.variable_estilo.get()
+        if estilo_elegido not in PRESETS_SUBTITULOS:
+            estilo_elegido = "Shorts clásico"
         self._al_guardar({"encoder": valor_encoder,
                           "modelo": self._modelo_elegido(),
                           "idioma": valor_idioma,
-                          "workers_exportacion": valor_workers})
+                          "workers_exportacion": valor_workers,
+                          "estilo_subtitulos": estilo_elegido,
+                          "margen_vertical": valor_margen})
         self.destroy()
 
 
@@ -1042,7 +1085,11 @@ class AppClipIA(ctk.CTk):
                     clip=clip, ruta_video=ruta_video,
                     segmentos=list(segmentos),
                     carpeta_salida=self.carpeta_salida, nombre=nombre,
-                    seguir_rostros=seguir_rostros, encoder=encoder))
+                    seguir_rostros=seguir_rostros, encoder=encoder,
+                    estilo=self.config.get("estilo_subtitulos",
+                                           "Shorts clásico"),
+                    margen_vertical=self.config.get("margen_vertical",
+                                                    300)))
 
             def al_progreso(fraccion, eta, terminados, total_lote, en_curso):
                 if en_curso:

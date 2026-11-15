@@ -60,7 +60,9 @@ from clipia.rostros import (
     detectar_rostros_con_limite,
 )
 from clipia.subtitulos import (
+                                ESTILO_DEFECTO,
                                 PLANTILLA_ASS,
+                                PRESETS_SUBTITULOS,
                                 _escapar_ruta_subtitulos,
                                 _fragmentos_subtitulo,
                                 generar_subtitulos_ass,
@@ -80,6 +82,7 @@ from clipia.utilidades import formato_ass, formato_hora, obtener_duracion
 
 __all__ = [
     "DURACIONES_VENTANA",
+    "ESTILO_DEFECTO",
     "IDIOMAS",
     "INSTRUCCIONES_INSTALACION",
     "INSTRUCCIONES_MODELO",
@@ -87,6 +90,7 @@ __all__ = [
     "MODELOS_WHISPER",
     "PALABRAS_GANCHO",
     "PLANTILLA_ASS",
+    "PRESETS_SUBTITULOS",
     "ColaExportacion",
     "ExportacionCancelada",
     "ResultadoClip",

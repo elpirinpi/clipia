@@ -49,6 +49,8 @@ class TrabajoExportacion:
     nombre: str = ""
     seguir_rostros: bool = True
     encoder: str | None = None
+    estilo: str = "Shorts clásico"
+    margen_vertical: int | None = None
     reintentos: int = REINTENTOS_POR_DEFECTO
 
 
@@ -176,7 +178,8 @@ class ColaExportacion:
         os.close(fd)
         try:
             self._generar_ass(trabajo.segmentos, clip["start"],
-                              clip["end"], ruta_ass)
+                              clip["end"], ruta_ass, trabajo.estilo,
+                              trabajo.margen_vertical)
             rostros = None
             if trabajo.seguir_rostros:
                 rostros = self._detectar(

@@ -14,6 +14,9 @@ VALORES_DEFECTO: dict = {
     "idioma": "es",
     "carpeta_salida": "",
     "estilo_subtitulos": "Shorts clásico",
+    # Margen vertical de los subtítulos (px desde abajo; zona segura
+    # de TikTok). 300 es el del preset clásico.
+    "margen_vertical": 300,
     "encoder": "auto",
     "seguir_rostros": True,
     # Workers de exportación: 0 = automático (1 con libx264, 2 con

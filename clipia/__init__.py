@@ -39,7 +39,11 @@ from .ollama import (
 )
 from .procesos import contar, ejecutar, matar_todos, olvidar, registrar
 from .rostros import detectar_rostros, detectar_rostros_con_limite
-from .subtitulos import generar_subtitulos_ass
+from .subtitulos import (
+    ESTILO_DEFECTO,
+    PRESETS_SUBTITULOS,
+    generar_subtitulos_ass,
+)
 from .transcripcion import (
     IDIOMAS,
     MODELOS_WHISPER,
@@ -51,11 +55,13 @@ from .transcripcion import (
 from .utilidades import formato_ass, formato_hora, obtener_duracion
 
 __all__ = [
+    "ESTILO_DEFECTO",
     "IDIOMAS",
     "INSTRUCCIONES_INSTALACION",
     "INSTRUCCIONES_MODELO",
     "MODELO_DEFECTO",
     "MODELOS_WHISPER",
+    "PRESETS_SUBTITULOS",
     "ColaExportacion",
     "ExportacionCancelada",
     "ResultadoClip",

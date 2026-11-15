@@ -619,6 +619,61 @@ class DialogoEditorClip(ctk.CTkToplevel):
         self.destroy()
 
 
+class DialogoResultadoExportacion(ctk.CTkToplevel):
+    """Resumen al terminar la exportación: lista de éxito/fallo por
+    clip y botón para abrir la carpeta de salida."""
+
+    def __init__(self, padre, resultados, carpeta_salida,
+                 al_abrir_carpeta) -> None:
+        super().__init__(padre)
+        self.title("Exportación terminada")
+        self.geometry("480x420")
+        self.resizable(False, False)
+        self.configure(fg_color=PANEL)
+        self.transient(padre)
+        self.grab_set()
+        self._carpeta = carpeta_salida
+        self._al_abrir_carpeta = al_abrir_carpeta
+        ok = sum(1 for r in resultados if r.ok)
+        ctk.CTkLabel(self, text="%d de %d clip(s) exportados."
+                     % (ok, len(resultados)),
+                     font=ctk.CTkFont(size=14, weight="bold"),
+                     text_color=TEXTO).pack(pady=(16, 4))
+        lista = ctk.CTkScrollableFrame(
+            self, fg_color="transparent",
+            scrollbar_button_color=BORDE)
+        lista.pack(fill="both", expand=True, padx=16, pady=(8, 4))
+        for resultado in resultados:
+            if resultado.ok:
+                texto = "✓ %s" % resultado.trabajo.nombre
+                color = VERDE
+            elif resultado.cancelado:
+                texto = "⊘ %s — cancelado" % resultado.trabajo.nombre
+                color = SILENCIO
+            else:
+                texto = "✗ %s — %s" % (resultado.trabajo.nombre,
+                                       resultado.error or "error")
+                color = ROJO
+            ctk.CTkLabel(lista, text=texto,
+                         font=ctk.CTkFont(size=12), text_color=color,
+                         anchor="w", wraplength=400,
+                         justify="left").pack(anchor="w", fill="x",
+                                              pady=2)
+        fila = ctk.CTkFrame(self, fg_color="transparent")
+        fila.pack(fill="x", padx=16, pady=(8, 12))
+        self.boton_abrir = ctk.CTkButton(
+            fila, text="Abrir carpeta", fg_color=AZUL,
+            hover_color=AZUL_HOVER, command=self._abrir)
+        self.boton_abrir.pack(side="left")
+        ctk.CTkButton(
+            fila, text="Cerrar", fg_color=TARJETA, hover_color=BORDE,
+            text_color=TEXTO, command=self.destroy,
+        ).pack(side="left", padx=(8, 0))
+
+    def _abrir(self) -> None:
+        self._al_abrir_carpeta(self._carpeta)
+
+
 def _crear_carpeta_salida() -> str:
     """Devuelve una carpeta de salida usable.
 
@@ -1870,17 +1925,11 @@ class AppClipIA(ctk.CTk):
                 self._ui(self._estado,
                          "Listo con errores: %d de %d clip(s) en %s"
                          % (len(ok), total, self.carpeta_salida), 1.0)
-                self._ui(messagebox.showwarning, "ClipIA",
-                         "%d de %d clip(s) exportados en:\n%s\n\n"
-                         "Fallaron:\n%s"
-                         % (len(ok), total, self.carpeta_salida, detalle))
             else:
                 self._ui(self._estado,
                          "Listo: %d clip(s) en %s"
                          % (len(ok), self.carpeta_salida), 1.0)
-                self._ui(messagebox.showinfo, "ClipIA",
-                         "%d clip(s) exportados en:\n%s"
-                         % (len(ok), self.carpeta_salida))
+            self._ui(self._mostrar_resultado_exportacion, resultados)
         except Exception as error:  # noqa: BLE001 - mostrar cualquier error
             detalle = "%s: %s" % (type(error).__name__, error)
             log.exception("error en la exportación")
@@ -1889,6 +1938,11 @@ class AppClipIA(ctk.CTk):
         finally:
             self._ui(self._bloquear, False)
             self._ui(self.boton_cancelar.configure, state="disabled")
+
+    def _mostrar_resultado_exportacion(self, resultados) -> None:
+        """Muestra el resumen de la exportación (corre en la UI)."""
+        DialogoResultadoExportacion(self, resultados, self.carpeta_salida,
+                                    self._abrir_archivo)
 
 
 def main() -> None:

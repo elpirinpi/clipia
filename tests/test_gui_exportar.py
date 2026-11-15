@@ -46,13 +46,20 @@ def _con_cola_falsa():
 
 def test_hilo_exportar_construye_trabajos_y_resume(app, tmp_path):
     """Los trabajos llevan nombre clipNN_inicio-fin, el encoder
-    detectado y la carpeta de salida; al final se muestra el resumen."""
+    detectado y la carpeta de salida; al final se muestra el diálogo
+    de resultado con los clips exportados."""
     ColaFalsa.instancias.clear()
     app.carpeta_salida = str(tmp_path)
+    creados = []
+
+    class DialogoFalso:
+        def __init__(self, padre, resultados, carpeta, al_abrir):
+            creados.append((resultados, carpeta))
+
     with _con_cola_falsa(), mock.patch.object(
-            app_mod.messagebox, "showinfo") as info:
+            app_mod, "DialogoResultadoExportacion", DialogoFalso):
         app._hilo_exportar(CLIPS, "video.mp4", SEGMENTOS, False)
-        app._procesar_cola()  # los messagebox van por la cola de UI
+        app._procesar_cola()  # el diálogo va por la cola de UI
     cola = ColaFalsa.instancias[-1]
     assert cola.workers == 1  # libx264 en este servidor
     assert [t.nombre for t in cola.trabajos] == [
@@ -60,8 +67,10 @@ def test_hilo_exportar_construye_trabajos_y_resume(app, tmp_path):
     assert all(t.encoder == "libx264" for t in cola.trabajos)
     assert all(t.carpeta_salida == str(tmp_path) for t in cola.trabajos)
     assert all(not t.seguir_rostros for t in cola.trabajos)
-    info.assert_called_once()
-    assert "2 clip(s) exportados" in info.call_args[0][1]
+    assert len(creados) == 1
+    resultados, carpeta = creados[0]
+    assert len(resultados) == 2 and all(r.ok for r in resultados)
+    assert carpeta == str(tmp_path)
 
 
 def test_hilo_exportar_usa_workers_configurados(app, tmp_path):
@@ -73,9 +82,14 @@ def test_hilo_exportar_usa_workers_configurados(app, tmp_path):
     assert ColaFalsa.instancias[-1].workers == 3
 
 
-def test_hilo_exportar_con_fallos_muestra_advertencia(app, tmp_path):
+def test_hilo_exportar_con_fallos_muestra_dialogo(app, tmp_path):
     ColaFalsa.instancias.clear()
     app.carpeta_salida = str(tmp_path)
+    creados = []
+
+    class DialogoFalso:
+        def __init__(self, padre, resultados, carpeta, al_abrir):
+            creados.append(resultados)
 
     def exportar_con_fallo(self, trabajos, cancelar=None):
         self.trabajos = trabajos
@@ -83,13 +97,14 @@ def test_hilo_exportar_con_fallos_muestra_advertencia(app, tmp_path):
                 ResultadoClip(trabajos[1], False, error="ffmpeg falló")]
 
     with _con_cola_falsa(), mock.patch.object(
-            app_mod.messagebox, "showwarning") as aviso:
+            app_mod, "DialogoResultadoExportacion", DialogoFalso):
         with mock.patch.object(ColaFalsa, "exportar", exportar_con_fallo):
             app._hilo_exportar(CLIPS, "video.mp4", SEGMENTOS, False)
-            app._procesar_cola()  # los messagebox van por la cola de UI
-    aviso.assert_called_once()
-    assert "1 de 2 clip(s)" in aviso.call_args[0][1]
-    assert "ffmpeg falló" in aviso.call_args[0][1]
+            app._procesar_cola()  # el diálogo va por la cola de UI
+    assert len(creados) == 1
+    resultados = creados[0]
+    assert sum(1 for r in resultados if r.ok) == 1
+    assert [r for r in resultados if not r.ok][0].error == "ffmpeg falló"
 
 
 def test_hilo_exportar_cancelado_no_muestra_dialogo(app, tmp_path):
@@ -100,13 +115,11 @@ def test_hilo_exportar_cancelado_no_muestra_dialogo(app, tmp_path):
         return [ResultadoClip(t, False, cancelado=True) for t in trabajos]
 
     with _con_cola_falsa(), mock.patch.object(
-            app_mod.messagebox, "showinfo") as info, mock.patch.object(
-            app_mod.messagebox, "showwarning") as aviso:
+            app_mod, "DialogoResultadoExportacion") as dialogo:
         with mock.patch.object(ColaFalsa, "exportar", exportar_cancelado):
             app._hilo_exportar(CLIPS, "video.mp4", SEGMENTOS, False)
             app._procesar_cola()  # el estado va por la cola de UI
-    info.assert_not_called()
-    aviso.assert_not_called()
+    dialogo.assert_not_called()
     assert "cancelada" in app.etiqueta_estado.cget("text").lower()
 
 
@@ -129,7 +142,8 @@ def test_exportar_habilita_boton_cancelar(app, tmp_path, monkeypatch):
     app.segmentos = list(SEGMENTOS)
     app.seleccion = [tk.BooleanVar(value=True) for _ in CLIPS]
     monkeypatch.setattr(app_mod, "ColaExportacion", ColaFalsa)
-    monkeypatch.setattr(app_mod.messagebox, "showinfo", lambda *a: None)
+    monkeypatch.setattr(app_mod, "DialogoResultadoExportacion",
+                        lambda *a: None)
     app._exportar()
     assert str(app.boton_cancelar.cget("state")) == "normal"
     assert app._cancelar_exportacion is not None

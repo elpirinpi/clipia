@@ -7,7 +7,6 @@ BatchedInferencePipeline, que procesa varios fragmentos de audio a la
 vez: en CPU es ~30% más rápido que el modo normal y en GPU mucho más.
 """
 import os
-import subprocess
 import tempfile
 import threading
 from collections.abc import Callable
@@ -21,6 +20,7 @@ if TYPE_CHECKING:
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 from .cache import clave_archivo, escribir_cache, leer_cache
+from .procesos import ejecutar
 from .utilidades import obtener_duracion
 
 # Modelos Whisper disponibles: tamaño de descarga y RAM aproximada que
@@ -153,7 +153,7 @@ def liberar_modelos() -> None:
 def _extraer_audio_wav(ruta_video: str, ruta_wav: str) -> None:
     """Extrae el audio a WAV PCM 16 kHz mono con ffmpeg
     (lo que Whisper usa)."""
-    subprocess.run(
+    ejecutar(
         ["ffmpeg", "-y", "-v", "error", "-i", ruta_video,
          "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", ruta_wav],
         check=True,

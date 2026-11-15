@@ -109,7 +109,7 @@ def test_rostros_no_cachea_errores(tmp_path, cache_tmp, monkeypatch):
     import clipia.rostros as rostros_mod
 
     video = video_sintetico(tmp_path / "video.mp4", duracion=5.0)
-    monkeypatch.setattr(rostros_mod.subprocess, "run",
+    monkeypatch.setattr(rostros_mod, "ejecutar",
                         lambda *a, **k: (_ for _ in ()).throw(
                             RuntimeError("ffmpeg roto")))
     assert detectar_rostros(video, 0, 5) == []

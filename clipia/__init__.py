@@ -29,6 +29,7 @@ from .exportacion import (
     generar_vista_previa,
 )
 from .momentos import detectar_momentos
+from .procesos import contar, ejecutar, matar_todos, olvidar, registrar
 from .rostros import detectar_rostros, detectar_rostros_con_limite
 from .subtitulos import generar_subtitulos_ass
 from .transcripcion import (
@@ -50,12 +51,14 @@ __all__ = [
     "TrabajoExportacion",
     "carpeta_cache",
     "clave_archivo",
+    "contar",
     "descargar_youtube",
     "descripcion_encoder",
     "detectar_encoder",
     "detectar_momentos",
     "detectar_rostros",
     "detectar_rostros_con_limite",
+    "ejecutar",
     "escribir_cache",
     "exportar_clip",
     "formato_ass",
@@ -65,10 +68,13 @@ __all__ = [
     "generar_vista_previa",
     "leer_cache",
     "liberar_modelos",
+    "matar_todos",
     "obtener_duracion",
     "obtener_modelo",
+    "olvidar",
     "opciones_encoder",
     "ram_total_gb",
+    "registrar",
     "transcribir",
     "workers_efectivos",
     "workers_recomendados",

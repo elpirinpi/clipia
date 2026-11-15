@@ -29,6 +29,7 @@ from clipia.cola import ColaExportacion, TrabajoExportacion, workers_efectivos
 from clipia.config import cargar_config, guardar_config
 from clipia.encoder import descripcion_encoder, detectar_encoder
 from clipia.logs import configurar_logging
+from clipia.procesos import matar_todos
 from clipia.rostros import detectar_rostros_con_limite
 from clipia.transcripcion import IDIOMAS, MODELOS_WHISPER, ram_total_gb
 
@@ -610,7 +611,17 @@ class AppClipIA(ctk.CTk):
                          daemon=True).start()
 
     def _al_cerrar(self) -> None:
-        """Limpia las miniaturas temporales y cierra la ventana (B10)."""
+        """Cancela el trabajo en curso, mata los ffmpeg hijos y cierra
+        la ventana (B10 + Fase 1: nada de procesos huérfanos).
+
+        Los hilos de trabajo son daemon y mueren con el intérprete,
+        pero los ffmpeg hijos NO morirían solos: por eso se cancelan
+        primero (para que la cola borre los parciales) y se matan
+        después los que sigan vivos.
+        """
+        if self._cancelar_exportacion is not None:
+            self._cancelar_exportacion.set()
+        matar_todos()
         if self._dir_miniaturas:
             shutil.rmtree(self._dir_miniaturas, ignore_errors=True)
             self._dir_miniaturas = None

@@ -7,6 +7,7 @@ import threading
 from collections.abc import Callable
 
 from .encoder import detectar_encoder, opciones_encoder
+from .procesos import olvidar, registrar
 from .rostros import _expresion_rostros
 
 
@@ -104,11 +105,12 @@ def exportar_clip(ruta_video: str, inicio: float, fin: float,
     # fueran por un tubo aparte que nadie lee, en Windows ese tubo se
     # llena (unos 4 KB) y ffmpeg se queda esperando para siempre, con
     # la barra congelada y la exportación sin terminar.
+    proceso = None
     try:
-        proceso = subprocess.Popen(
+        proceso = registrar(subprocess.Popen(
             comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, cwd=tmp_ass.name if tmp_ass else None,
-        )
+        ))
         _vigilar_cancelacion(proceso, cancelar)
         cola_error = ""
         if proceso.stdout is not None:
@@ -138,6 +140,8 @@ def exportar_clip(ruta_video: str, inicio: float, fin: float,
             raise RuntimeError("ffmpeg falló al exportar el clip:\n%s"
                                % cola_error.strip()[-2000:])
     finally:
+        if proceso is not None:
+            olvidar(proceso)
         if tmp_ass is not None:
             tmp_ass.cleanup()
     if progreso:

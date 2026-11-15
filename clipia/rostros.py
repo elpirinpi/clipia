@@ -7,12 +7,12 @@ Solo mide dónde está la cara en cada momento; no identifica a nadie.
 import logging
 import os
 import shutil
-import subprocess
 import tempfile
 import threading
 from collections.abc import Callable
 
 from .cache import clave_archivo, escribir_cache, leer_cache
+from .procesos import ejecutar
 
 log = logging.getLogger("clipia.rostros")
 
@@ -70,8 +70,10 @@ def detectar_rostros(ruta_video: str, inicio: float, fin: float,
         tmp = tempfile.mkdtemp(prefix="clipia_rostros_")
         try:
             # Un fotograma cada `intervalo` segundos, reducido a 640 px.
+            # ejecutar() registra el ffmpeg: si la app se cierra a
+            # mitad, matar_todos() lo alcanza (no queda huérfano).
             patron = os.path.join(tmp, "f_%03d.jpg")
-            subprocess.run(
+            ejecutar(
                 ["ffmpeg", "-y", "-v", "error",
                  "-ss", "%.3f" % inicio, "-t", "%.3f" % duracion,
                  "-i", ruta_video,

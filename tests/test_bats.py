@@ -114,3 +114,43 @@ def test_diagnostico_vuelca_a_log():
     assert "diagnostico.log" in contenido
     assert 'call "%~f0" --log' in contenido
     assert 'type "%~dp0diagnostico.log"' in contenido
+
+
+def test_setup_crea_venv_e_instala_dentro():
+    """Fase 0 (venv): setup.bat crea .venv con `py -m venv` y las
+    dependencias se instalan con el pip del venv, no el global."""
+    contenido = leer_bat("setup.bat").decode("ascii")
+    assert "%PY% -m venv .venv" in contenido
+    assert ".venv\\Scripts\\python.exe -m pip install -r requirements.txt" \
+        in contenido
+    # El paso del venv va antes que el de dependencias.
+    assert contenido.index(":paso_venv") < contenido.index(":paso_deps")
+    # La creación del venv comprueba errorlevel y tiene su etiqueta.
+    ls = lineas("setup.bat")
+    i_venv = next(i for i, linea in enumerate(ls)
+                  if "%PY% -m venv .venv" in linea)
+    assert any("if errorlevel 1 goto :error_venv" in linea
+               for linea in ls[i_venv:i_venv + 2])
+    assert any(linea.strip() == ":error_venv" for linea in ls)
+
+
+def test_run_prefiere_venv():
+    """Fase 0 (venv): run.bat usa .venv si existe y solo si no existe
+    cae al Python global."""
+    contenido = leer_bat("run.bat").decode("ascii")
+    assert 'if exist ".venv\\Scripts\\python.exe" goto :usar_venv' \
+        in contenido
+    assert "set PY=.venv\\Scripts\\python.exe" in contenido
+    # La comprobación del venv va antes que la resolución global.
+    assert contenido.index('if exist ".venv') < contenido.index(
+        "set PY=python")
+
+
+def test_diagnostico_prefiere_venv():
+    """Fase 0 (venv): diagnostico.bat usa el mismo intérprete que
+    run.bat: el venv si existe."""
+    contenido = leer_bat("diagnostico.bat").decode("ascii")
+    assert 'if exist ".venv\\Scripts\\python.exe" goto :usar_venv' \
+        in contenido
+    assert "set PY=.venv\\Scripts\\python.exe" in contenido
+    assert ".venv" in contenido.split("--- venv propio")[1]

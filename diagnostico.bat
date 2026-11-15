@@ -3,12 +3,18 @@ REM ClipIA - diagnostico: muestra que tiene instalado el PC.
 REM Si la app no abre, ejecuta este archivo y manda una foto de lo que dice
 REM (o el archivo diagnostico.log que se genera junto a la app).
 cd /d %~dp0
-REM B6: mismo interprete que run.bat (py -3.12 preferido).
+REM B6: mismo interprete que run.bat (venv propio preferido; si no,
+REM py -3.12).
+if exist ".venv\Scripts\python.exe" goto :usar_venv
 set PY=python
 py --version >nul 2>nul
 if not errorlevel 1 set PY=py
 py -3.12 --version >nul 2>nul
 if not errorlevel 1 set PY=py -3.12
+goto :seguir
+:usar_venv
+set PY=.venv\Scripts\python.exe
+:seguir
 if "%~1"=="--log" goto :diagnostico
 echo Generando diagnostico... (el resultado queda en diagnostico.log)
 call "%~f0" --log > "%~dp0diagnostico.log" 2>&1
@@ -26,6 +32,10 @@ echo.
 echo --- Interprete Python usado ---
 echo %PY%
 %PY% --version
+echo.
+echo --- venv propio (.venv) ---
+if exist ".venv\Scripts\python.exe" echo .venv existe
+if not exist ".venv\Scripts\python.exe" echo .venv NO existe (se usa Python global)
 echo.
 echo --- py launcher (python.org) ---
 py --version

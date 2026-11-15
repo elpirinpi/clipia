@@ -1,14 +1,21 @@
 @echo off
 REM ClipIA - lanzador (doble clic para abrir la app)
-REM Usa el Python de python.org si existe (py -3.12); si no, el python del PATH.
+REM Usa el venv propio (.venv) si existe; si no, el Python de python.org
+REM (py -3.12) o el python del PATH.
 REM Si faltan las dependencias, las instala solo antes de abrir la app.
 cd /d %~dp0
 echo Iniciando ClipIA...
+REM Fase 0: se prefiere el venv propio; si no existe, el Python global.
+if exist ".venv\Scripts\python.exe" goto :usar_venv
 set PY=python
 py --version >nul 2>nul
 if not errorlevel 1 set PY=py
 py -3.12 --version >nul 2>nul
 if not errorlevel 1 set PY=py -3.12
+goto :comprobar_python
+:usar_venv
+set PY=.venv\Scripts\python.exe
+:comprobar_python
 %PY% --version >nul 2>nul
 if errorlevel 1 goto :sin_python
 REM B5: verificar TODAS las dependencias (antes solo customtkinter

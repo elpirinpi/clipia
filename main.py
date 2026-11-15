@@ -80,9 +80,11 @@ PASOS = ["Cargar", "Analizar", "Clips", "Exportar"]
 
 def _detalle_error(error: Exception) -> str:
     """Texto para mostrar un error al usuario: los errores de
-    descarga ya traen su mensaje accionable (qué hacer), así que se
-    muestran tal cual; los demás llevan el tipo delante."""
-    if isinstance(error, core.ErrorDescarga):
+    descarga (YouTube, modelo de voz) ya traen su mensaje accionable
+    (qué hacer), así que se muestran tal cual; los demás llevan el
+    tipo delante."""
+    if isinstance(error, (core.ErrorDescarga,
+                          core.ErrorDescargaModelo)):
         return str(error)
     return "%s: %s" % (type(error).__name__, error)
 
@@ -1619,6 +1621,8 @@ class AppClipIA(DnDWrapper, ctk.CTk):
             modelo=self.config.get("modelo", "base"),
             idioma=self.config.get("idioma", "es"),
             batch_size=lote if lote else None,
+            progreso_descarga=lambda p: al_progreso(
+                "Descargando modelo de voz…", p),
             progreso=lambda p: al_progreso(
                 "Transcribiendo audio con IA…", p))
         if not segmentos:

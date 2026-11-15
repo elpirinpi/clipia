@@ -53,6 +53,8 @@ def limpiar():
 
 def test_singleton_cachea_el_modelo(monkeypatch):
     creados = []
+    monkeypatch.setattr(tr, "descargar_modelo",
+                        lambda m, p=None: "/fake/modelo")
     monkeypatch.setattr(tr, "_crear_modelo",
                         lambda m, d, t: (object(), d))
     # Contar creaciones envolviendo la función original parcheada.
@@ -72,6 +74,8 @@ def test_singleton_cachea_el_modelo(monkeypatch):
 
 
 def test_singleton_olvida_el_mas_antiguo(monkeypatch):
+    monkeypatch.setattr(tr, "descargar_modelo",
+                        lambda m, p=None: "/fake/modelo")
     monkeypatch.setattr(tr, "_crear_modelo",
                         lambda m, d, t: (object(), d))
     base = tr.obtener_modelo("base", "cpu", "int8")
@@ -100,7 +104,7 @@ def _preparar_fake(monkeypatch, dispositivo="cpu"):
                                  "float16" if dispositivo == "cuda"
                                  else "int8"))
     monkeypatch.setattr(tr, "obtener_modelo",
-                        lambda m, d, t: "modelo-%s" % d)
+                        lambda m, d, t, *a, **k: "modelo-%s" % d)
     import faster_whisper
     monkeypatch.setattr(faster_whisper, "BatchedInferencePipeline",
                         FakePipeline)

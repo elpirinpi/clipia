@@ -5,7 +5,12 @@ primera transcripción tarda unos segundos en cargarlo y las siguientes
 reutilizan la misma instancia. La transcripción usa
 BatchedInferencePipeline, que procesa varios fragmentos de audio a la
 vez: en CPU es ~30% más rápido que el modo normal y en GPU mucho más.
+
+Fase 4: el modelo se descarga en el primer uso con progreso visible
+(gancho de Hugging Face) y con un mensaje claro si no hay red, en vez
+del error técnico de faster-whisper.
 """
+import logging
 import os
 import tempfile
 import threading
@@ -22,6 +27,8 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 from .cache import clave_archivo, escribir_cache, leer_cache
 from .procesos import ejecutar
 from .utilidades import obtener_duracion
+
+log = logging.getLogger("clipia.transcripcion")
 
 # Modelos Whisper disponibles: tamaño de descarga y RAM aproximada que
 # necesitan (el aviso de RAM de los ajustes usa estos valores).
@@ -55,6 +62,113 @@ IDIOMAS: list[tuple[str, str]] = [
 _MAX_MODELOS_CACHEADOS = 2
 _MODELOS: dict = {}
 _BLOQUEO_MODELOS = threading.Lock()
+
+# Archivos del modelo que descarga faster-whisper (los mismos que
+# faster_whisper.utils.download_model pide a Hugging Face).
+_PATRONES_MODELO = ["config.json", "preprocessor_config.json",
+                    "model.bin", "tokenizer.json", "vocabulary.*"]
+
+
+class ErrorDescargaModelo(Exception):
+    """El modelo de voz no se pudo descargar (sin red, sin espacio...).
+    El mensaje ya es accionable y se muestra al usuario tal cual."""
+
+
+def _repo_modelo(modelo: str) -> str:
+    """Repositorio de Hugging Face del modelo (el mismo que usa
+    faster-whisper: Systran/faster-whisper-<tamaño>)."""
+    try:
+        from faster_whisper.utils import _MODELS
+
+        repo = _MODELS.get(modelo)
+        if repo:
+            return repo
+    except ImportError:
+        pass
+    if "/" in modelo:
+        return modelo
+    return "Systran/faster-whisper-%s" % modelo
+
+
+class _ProgresoDescarga:
+    """Acumulador del avance de la descarga del modelo.
+
+    Hugging Face descarga varios archivos y crea una barra tqdm por
+    archivo: este acumulador suma los totales y los avances de todas
+    para reportar un único porcentaje global.
+    """
+
+    def __init__(self, progreso: Callable[[float], None] | None) -> None:
+        self.progreso = progreso
+        self.total = 0
+        self.descargado = 0
+
+    def nueva_barra(self, total) -> None:
+        if total:
+            self.total += total
+
+    def avanzar(self, cantidad: int) -> None:
+        self.descargado += cantidad
+        if self.progreso and self.total:
+            self.progreso(min(1.0, self.descargado / self.total))
+
+
+def _clase_barra(acumulador: _ProgresoDescarga):
+    """Fábrica de la clase tqdm que Hugging Face usa para cada
+    archivo: cada instancia suma su total al acumulador y reporta
+    cada avance. La barra no escribe en consola (disable=True): el
+    avance va a la interfaz de la app."""
+    from tqdm import tqdm
+
+    class _Barra(tqdm):
+        def __init__(self, *args, **kwargs):
+            kwargs.setdefault("disable", True)
+            super().__init__(*args, **kwargs)
+            acumulador.nueva_barra(self.total)
+
+        def update(self, n=1):
+            super().update(n)
+            acumulador.avanzar(n)
+
+    return _Barra
+
+
+def descargar_modelo(modelo: str = "base",
+                     progreso: Callable[[float], None] | None = None
+                     ) -> str:
+    """Asegura que el modelo Whisper esté descargado.
+
+    Si ya está en la caché de Hugging Face, devuelve su ruta sin
+    descargar nada. Si no, lo descarga con progreso visible
+    (0.0-1.0). Sin red, lanza ErrorDescargaModelo con un mensaje
+    accionable. Devuelve la ruta local del modelo.
+    """
+    import huggingface_hub
+
+    repo = _repo_modelo(modelo)
+    try:
+        # Comprobación local: si está en caché, no hay red ni espera.
+        return huggingface_hub.snapshot_download(
+            repo, allow_patterns=_PATRONES_MODELO, local_files_only=True)
+    except Exception:
+        pass  # no está (o está incompleto): descargar
+    acumulador = _ProgresoDescarga(progreso)
+    try:
+        ruta = huggingface_hub.snapshot_download(
+            repo, allow_patterns=_PATRONES_MODELO,
+            tqdm_class=_clase_barra(acumulador))
+    except Exception as error:  # noqa: BLE001 - traducir cualquier error
+        log.warning("no se pudo descargar el modelo %s (%s)", modelo,
+                    error)
+        tamano = MODELOS_WHISPER.get(modelo, {}).get("tamano_mb")
+        detalle = (" (~%d MB)" % tamano) if tamano else ""
+        raise ErrorDescargaModelo(
+            "No se pudo descargar el modelo de voz «%s»%s. Revisa tu "
+            "conexión a internet y vuelve a intentarlo."
+            % (modelo, detalle)) from error
+    if progreso:
+        progreso(1.0)
+    return ruta
 
 
 def ram_total_gb() -> float | None:
@@ -115,15 +229,23 @@ def _crear_modelo(modelo: str, dispositivo: str, tipo_calculo: str):
 
 
 def obtener_modelo(modelo: str = "base", dispositivo: str | None = None,
-                   tipo_calculo: str | None = None):
+                   tipo_calculo: str | None = None,
+                   progreso_descarga: Callable[[float], None] | None = None):
     """Devuelve el WhisperModel cacheado (singleton por modelo y
     dispositivo). La primera llamada lo carga (unos segundos); las
-    siguientes devuelven la misma instancia."""
+    siguientes devuelven la misma instancia. Si el modelo no está
+    descargado, se descarga primero (con `progreso_descarga` como
+    avance 0.0-1.0); sin red, lanza ErrorDescargaModelo."""
     if dispositivo is None:
         dispositivo, tipo_calculo = _elegir_dispositivo()
     clave = (modelo, dispositivo, tipo_calculo)
     if clave in _MODELOS:
         return _MODELOS[clave]
+    # La descarga va FUERA del bloqueo: puede tardar minutos con
+    # modelos grandes y no debe bloquear a otros hilos. Si dos hilos
+    # la disparan a la vez, la caché de Hugging Face lo resuelve (el
+    # segundo encuentra los archivos ya descargados).
+    descargar_modelo(modelo, progreso_descarga)
     with _BLOQUEO_MODELOS:
         if clave in _MODELOS:
             return _MODELOS[clave]
@@ -211,7 +333,9 @@ def _transcribir_con_modelo(whisper, audio: "np.ndarray",
 def transcribir(ruta_video: str, modelo: str = "base", idioma: str = "es",
                 progreso: Callable[[float], None] | None = None,
                 batch_size: int | None = None,
-                usar_cache: bool = True) -> list[dict]:
+                usar_cache: bool = True,
+                progreso_descarga: Callable[[float], None] | None = None
+                ) -> list[dict]:
     """Transcribe el audio de un video.
 
     Devuelve una lista de segmentos:
@@ -222,6 +346,8 @@ def transcribir(ruta_video: str, modelo: str = "base", idioma: str = "es",
     `idioma` es un código ("es") o "auto" para autodetectar.
     `batch_size` es el tamaño de lote (16 en GPU, 8 en CPU por defecto).
     `progreso` es una función opcional que recibe un valor 0.0-1.0.
+    `progreso_descarga` es una función opcional que recibe el avance
+    de la descarga del modelo en el primer uso (0.0-1.0).
     Con `usar_cache` se reutiliza la transcripción guardada si el video
     no cambió (misma ruta, tamaño y fecha de modificación).
     """
@@ -243,7 +369,8 @@ def transcribir(ruta_video: str, modelo: str = "base", idioma: str = "es",
     batch = batch_size or (16 if dispositivo == "cuda" else 8)
     # "auto" (o None) deja que Whisper detecte el idioma del audio.
     idioma_param = None if idioma in (None, "auto") else idioma
-    whisper = obtener_modelo(modelo, dispositivo, tipo_calculo)
+    whisper = obtener_modelo(modelo, dispositivo, tipo_calculo,
+                             progreso_descarga)
 
     # Se extrae el audio con ffmpeg y se pasa como arreglo numpy: así no
     # se depende del decodificador interno de faster-whisper (PyAV), que
@@ -261,7 +388,8 @@ def transcribir(ruta_video: str, modelo: str = "base", idioma: str = "es",
             # sube tal cual.
             if dispositivo != "cpu":
                 _olvidar_modelo(modelo, dispositivo, tipo_calculo)
-                whisper_cpu = obtener_modelo(modelo, "cpu", "int8")
+                whisper_cpu = obtener_modelo(modelo, "cpu", "int8",
+                                             progreso_descarga)
                 resultado = _transcribir_con_modelo(
                     whisper_cpu, audio, idioma_param, 8, duracion, progreso)
             else:

@@ -27,8 +27,12 @@ goto :paso_ffmpeg
 echo [1/3] Python 3.12 (python.org) no encontrado. Instalando con winget...
 winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
 if errorlevel 1 goto :error_python
-set PY=py -3.12
-goto :paso_ffmpeg
+echo.
+echo Python 3.12 instalado. Windows necesita refrescar el PATH,
+echo asi que cierra esta ventana y vuelve a ejecutar setup.bat
+echo para terminar la instalacion.
+pause
+exit /b 0
 
 :error_python
 echo.
@@ -48,7 +52,16 @@ goto :paso_deno
 echo.
 echo [2/3] ffmpeg no encontrado. Instalando ffmpeg con winget...
 winget install -e --id Gyan.FFmpeg --accept-source-agreements --accept-package-agreements
+if errorlevel 1 goto :error_ffmpeg
 goto :paso_deno
+
+:error_ffmpeg
+echo.
+echo ERROR: no se pudo instalar ffmpeg con winget.
+echo Instalalo a mano con: winget install Gyan.FFmpeg
+echo y vuelve a ejecutar setup.bat.
+pause
+exit /b 1
 
 :paso_deno
 where deno >nul 2>nul
@@ -61,7 +74,16 @@ echo.
 echo [2b/3] Deno no encontrado. Instalando Deno con winget...
 echo        (lo usa yt-dlp para descargar de YouTube sin errores)
 winget install -e --id DenoLand.Deno --accept-source-agreements --accept-package-agreements
+if errorlevel 1 goto :error_deno
 goto :paso_deps
+
+:error_deno
+echo.
+echo ERROR: no se pudo instalar Deno con winget.
+echo Instalalo a mano con: winget install DenoLand.Deno
+echo y vuelve a ejecutar setup.bat.
+pause
+exit /b 1
 
 :paso_deps
 echo.

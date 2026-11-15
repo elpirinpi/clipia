@@ -18,7 +18,7 @@ on:
 
 permissions:
   contents: write
-  jobs:
+jobs:
   build-windows:
     runs-on: windows-latest
     steps:

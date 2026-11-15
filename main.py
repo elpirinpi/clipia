@@ -25,6 +25,7 @@ import customtkinter as ctk
 from PIL import Image
 
 import clipia_core as core
+from clipia import editor
 from clipia.cola import ColaExportacion, TrabajoExportacion, workers_efectivos
 from clipia.config import cargar_config, guardar_config
 from clipia.encoder import descripcion_encoder, detectar_encoder
@@ -325,6 +326,244 @@ class DialogoAjustes(ctk.CTkToplevel):
         self.destroy()
 
 
+class DialogoEditorClip(ctk.CTkToplevel):
+    """Ventana para ajustar los límites de un clip.
+
+    Sliders de inicio/fin, forma de onda del tramo (con el clip
+    resaltado en rojo) y transcripción clicable: un clic en una
+    palabra (o en la onda) fija el límite activo (inicio o fin). Al
+    guardar, el llamador recibe (inicio, fin) y actualiza el clip.
+    """
+
+    def __init__(self, padre, clip: dict, segmentos: list,
+                 ruta_video: str, duracion: float, al_guardar) -> None:
+        super().__init__(padre)
+        self.title("Editar clip")
+        self.geometry("640x640")
+        self.resizable(False, False)
+        self.configure(fg_color=PANEL)
+        self.transient(padre)
+        self.grab_set()
+        self._al_guardar = al_guardar
+        self._segmentos = segmentos
+        self._ruta_video = ruta_video
+        self._duracion = max(1.0, float(duracion))
+        self._inicio = float(clip["start"])
+        self._fin = float(clip["end"])
+        self._limite_activo = "inicio"
+        # Ventana visible de la onda y la transcripción: el clip con
+        # contexto a ambos lados para poder ampliarlo con un clic.
+        self._ventana_inicio = max(0.0,
+                                   self._inicio - editor.MARGEN_CONTEXTO)
+        self._ventana_fin = min(self._duracion,
+                                self._fin + editor.MARGEN_CONTEXTO)
+        self._muestras = None
+        self._forma_lista = threading.Event()
+        self._imagen_forma = None
+
+        ctk.CTkLabel(self, text="Editar clip",
+                     font=ctk.CTkFont(size=16, weight="bold"),
+                     text_color=TEXTO).pack(pady=(16, 4))
+
+        # Forma de onda (se carga en un hilo: extraer el audio tarda
+        # 1-3 s y la ventana no debe congelarse).
+        self.etiqueta_forma = ctk.CTkLabel(
+            self, text="Cargando forma de onda…",
+            font=ctk.CTkFont(size=12), text_color=SILENCIO,
+            width=560, height=90, fg_color=BG, corner_radius=8)
+        self.etiqueta_forma.pack(padx=24, pady=(8, 4))
+        self.etiqueta_forma.bind("<Button-1>", self._al_clic_onda)
+        threading.Thread(target=self._cargar_forma, daemon=True).start()
+        self.after(100, self._revisar_forma)
+
+        # Sliders de inicio y fin.
+        self.etiqueta_inicio = ctk.CTkLabel(
+            self, text="", font=ctk.CTkFont(size=12), text_color=TEXTO,
+            anchor="w")
+        self.etiqueta_inicio.pack(fill="x", padx=24, pady=(8, 0))
+        self.slider_inicio = ctk.CTkSlider(
+            self, from_=0, to=self._duracion,
+            number_of_steps=max(1, int(self._duracion * 10)),
+            command=self._al_mover_inicio)
+        self.slider_inicio.pack(fill="x", padx=24)
+        self.slider_inicio.set(self._inicio)
+        self.etiqueta_fin = ctk.CTkLabel(
+            self, text="", font=ctk.CTkFont(size=12), text_color=TEXTO,
+            anchor="w")
+        self.etiqueta_fin.pack(fill="x", padx=24, pady=(8, 0))
+        self.slider_fin = ctk.CTkSlider(
+            self, from_=0, to=self._duracion,
+            number_of_steps=max(1, int(self._duracion * 10)),
+            command=self._al_mover_fin)
+        self.slider_fin.pack(fill="x", padx=24)
+        self.slider_fin.set(self._fin)
+
+        # Qué límite fija un clic en la transcripción o en la onda.
+        ctk.CTkLabel(
+            self, text="Un clic en una palabra o en la onda fija:",
+            font=ctk.CTkFont(size=12), text_color=SILENCIO,
+            anchor="w").pack(fill="x", padx=24, pady=(12, 4))
+        self.boton_limite = ctk.CTkSegmentedButton(
+            self, values=["Editar inicio", "Editar fin"],
+            command=self._al_elegir_limite)
+        self.boton_limite.pack(anchor="w", padx=24)
+        self.boton_limite.set("Editar inicio")
+
+        # Transcripción clicable del tramo.
+        self.texto = tk.Text(self, height=6, wrap="word", bg=BG, fg=TEXTO,
+                             relief="flat", highlightthickness=0)
+        self.texto.pack(fill="x", padx=24, pady=(8, 4))
+        self.texto.bind("<Key>", lambda _e: "break")  # solo lectura
+        self._palabras = editor.palabras_entre(
+            segmentos, self._inicio, self._fin,
+            margen=editor.MARGEN_CONTEXTO)
+        self._pintar_transcripcion()
+
+        # Texto que quedará en el clip con los límites actuales.
+        self.etiqueta_texto = ctk.CTkLabel(
+            self, text="", font=ctk.CTkFont(size=12),
+            text_color=SILENCIO, wraplength=560, justify="left",
+            anchor="w")
+        self.etiqueta_texto.pack(fill="x", padx=24, pady=(4, 4))
+
+        fila = ctk.CTkFrame(self, fg_color="transparent")
+        fila.pack(fill="x", padx=24, pady=(8, 8))
+        ctk.CTkButton(
+            fila, text="Guardar", fg_color=AZUL, hover_color=AZUL_HOVER,
+            command=self._guardar,
+        ).pack(side="left")
+        ctk.CTkButton(
+            fila, text="Cancelar", fg_color=TARJETA, hover_color=BORDE,
+            text_color=TEXTO, command=self.destroy,
+        ).pack(side="left", padx=(8, 0))
+        self._actualizar_etiquetas()
+
+    # -- Forma de onda ---------------------------------------------------
+
+    def _cargar_forma(self) -> None:
+        self._muestras = editor.extraer_muestras_audio(
+            self._ruta_video, self._ventana_inicio, self._ventana_fin)
+        self._forma_lista.set()
+
+    def _revisar_forma(self) -> None:
+        if not self.winfo_exists():
+            return
+        if self._forma_lista.is_set():
+            self._actualizar_forma()
+        else:
+            try:
+                self.after(100, self._revisar_forma)
+            except tk.TclError:
+                pass
+
+    def _actualizar_forma(self) -> None:
+        if self._muestras is None:
+            return
+        if not self._muestras:
+            self.etiqueta_forma.configure(text="Sin audio en este tramo")
+            return
+        ancho_ventana = max(0.1, self._ventana_fin - self._ventana_inicio)
+        seleccion = ((self._inicio - self._ventana_inicio) / ancho_ventana,
+                     (self._fin - self._ventana_inicio) / ancho_ventana)
+        imagen = editor.imagen_waveform(
+            self._muestras, 560, 90, color_fondo=BG, color_onda=AZUL,
+            color_seleccion=ROJO, seleccion=seleccion)
+        self._imagen_forma = ctk.CTkImage(imagen, size=(560, 90))
+        self.etiqueta_forma.configure(image=self._imagen_forma, text="")
+
+    # -- Transcripción ---------------------------------------------------
+
+    def _pintar_transcripcion(self) -> None:
+        """Escribe las palabras con una etiqueta por palabra (clic)."""
+        self.texto.configure(state="normal")
+        self.texto.delete("1.0", "end")
+        for i, palabra in enumerate(self._palabras):
+            etiqueta = "palabra_%d" % i
+            self.texto.insert("end", palabra["word"], etiqueta)
+            self.texto.tag_bind(
+                etiqueta, "<Button-1>",
+                lambda _e, p=palabra: self._al_clic_palabra(p))
+        self._colorear_transcripcion()
+
+    def _colorear_transcripcion(self) -> None:
+        """Las palabras dentro del clip en claro, las de fuera en gris."""
+        for i, palabra in enumerate(self._palabras):
+            etiqueta = "palabra_%d" % i
+            dentro = (palabra["start"] >= self._inicio
+                      and palabra["end"] <= self._fin)
+            self.texto.tag_config(
+                etiqueta,
+                foreground=TEXTO if dentro else SILENCIO)
+
+    # -- Límites ---------------------------------------------------------
+
+    def _al_elegir_limite(self, valor: str) -> None:
+        self._limite_activo = ("inicio" if valor == "Editar inicio"
+                               else "fin")
+
+    def _al_mover_inicio(self, valor: float) -> None:
+        self._fijar_inicio(float(valor))
+
+    def _al_mover_fin(self, valor: float) -> None:
+        self._fijar_fin(float(valor))
+
+    def _fijar_inicio(self, tiempo: float) -> None:
+        self._inicio = min(max(0.0, tiempo),
+                           self._fin - editor.DURACION_MINIMA_CLIP)
+        self.slider_inicio.set(self._inicio)
+        self._actualizar_etiquetas()
+
+    def _fijar_fin(self, tiempo: float) -> None:
+        self._fin = max(min(self._duracion, tiempo),
+                        self._inicio + editor.DURACION_MINIMA_CLIP)
+        self.slider_fin.set(self._fin)
+        self._actualizar_etiquetas()
+
+    def _al_clic_palabra(self, palabra: dict) -> None:
+        if self._limite_activo == "inicio":
+            self._fijar_inicio(palabra["start"])
+            # Tras fijar el inicio, lo natural es fijar el fin.
+            self._limite_activo = "fin"
+            self.boton_limite.set("Editar fin")
+        else:
+            self._fijar_fin(palabra["end"])
+
+    def _al_clic_onda(self, evento) -> None:
+        # La imagen de la onda siempre tiene 560 px de ancho (el
+        # ancho configurado de la etiqueta); winfo_width() puede dar 1
+        # si la ventana aún no está mapeada.
+        ancho = self.etiqueta_forma.cget("width") or 560
+        fraccion = min(1.0, max(0.0, evento.x / ancho))
+        tiempo = (self._ventana_inicio
+                  + fraccion * (self._ventana_fin - self._ventana_inicio))
+        if self._limite_activo == "inicio":
+            self._fijar_inicio(tiempo)
+            self._limite_activo = "fin"
+            self.boton_limite.set("Editar fin")
+        else:
+            self._fijar_fin(tiempo)
+
+    def _actualizar_etiquetas(self) -> None:
+        self.etiqueta_inicio.configure(
+            text="Inicio: %s" % editor.formato_tiempo(self._inicio))
+        self.etiqueta_fin.configure(
+            text="Fin: %s  (%s)"
+            % (editor.formato_tiempo(self._fin),
+               editor.formato_tiempo(self._fin - self._inicio)))
+        texto = editor.texto_entre(self._segmentos,
+                                   self._inicio, self._fin)
+        if len(texto) > 160:
+            texto = texto[:157] + "…"
+        self.etiqueta_texto.configure(
+            text="Contenido: %s" % (texto or "—"))
+        self._colorear_transcripcion()
+        self._actualizar_forma()
+
+    def _guardar(self) -> None:
+        self._al_guardar(self._inicio, self._fin)
+        self.destroy()
+
+
 def _crear_carpeta_salida() -> str:
     """Devuelve una carpeta de salida usable.
 
@@ -361,6 +600,23 @@ def _limpiar_temps_vista_previa() -> None:
     for nombre in nombres:
         if nombre.startswith(("clipia_vista_previa_", "clipia_miniaturas_")):
             shutil.rmtree(os.path.join(base, nombre), ignore_errors=True)
+
+
+def _claves_seleccion(clips: list[dict]) -> list:
+    """Claves únicas por clip para preservar la selección.
+
+    (video, inicio, fin) más un índice de ocurrencia: dos clips con
+    los mismos tiempos (p. ej. uno editado sobre otro, o dos manuales
+    iguales) no colisionan en el diccionario de selección.
+    """
+    vistos: dict = {}
+    claves = []
+    for clip in clips:
+        clave = (clip.get("video"), clip["start"], clip["end"])
+        n = vistos.get(clave, 0)
+        vistos[clave] = n + 1
+        claves.append((clave, n))
+    return claves
 
 
 class AppClipIA(ctk.CTk):
@@ -1042,17 +1298,16 @@ class AppClipIA(ctk.CTk):
             if preservar_seleccion:
                 # Las listas pueden diferir en uno: el clip manual recién
                 # agregado aún no tiene selección (queda en True).
-                # La clave incluye el video: dos clips de videos
-                # distintos pueden tener los mismos tiempos.
-                for i, c in enumerate(self.candidatos):
+                for i, clave in enumerate(
+                        _claves_seleccion(self.candidatos)):
                     if i < len(self.seleccion):
-                        seleccion_previa[(c.get("video"), c["start"],
-                                          c["end"])] = self.seleccion[i].get()
+                        seleccion_previa[clave] = self.seleccion[i].get()
         for widget in self.lista_clips.winfo_children():
             widget.destroy()
         self.seleccion = []
         self._imagenes_miniaturas = []
         videos_distintos = {c.get("video") for c in self.candidatos}
+        claves = _claves_seleccion(self.candidatos)
         for i, clip in enumerate(self.candidatos, start=1):
             tarjeta = ctk.CTkFrame(self.lista_clips, fg_color=TARJETA,
                                    corner_radius=10)
@@ -1073,8 +1328,7 @@ class AppClipIA(ctk.CTk):
             cuerpo.pack(side="left", fill="both", expand=True)
 
             variable = tk.BooleanVar(
-                value=seleccion_previa.get(
-                    (clip.get("video"), clip["start"], clip["end"]), True))
+                value=seleccion_previa.get(claves[i - 1], True))
             self.seleccion.append(variable)
             titulo = "Clip %d · %s · %s – %s" % (
                 i, core.formato_hora(clip["end"] - clip["start"]),
@@ -1103,6 +1357,11 @@ class AppClipIA(ctk.CTk):
                 hover_color=BORDE, text_color=TEXTO, height=30, width=120,
                 command=lambda c=clip: self._vista_previa(c),
             ).pack(side="right", padx=12, pady=10)
+            ctk.CTkButton(
+                tarjeta, text="✎ Editar", fg_color=PANEL,
+                hover_color=BORDE, text_color=TEXTO, height=30, width=90,
+                command=lambda c=clip: self._editar_clip(c),
+            ).pack(side="right", padx=(0, 6), pady=10)
 
         self.etiqueta_conteo.configure(
             text="%d clips · %s de video"
@@ -1149,8 +1408,9 @@ class AppClipIA(ctk.CTk):
         # La selección se captura en el hilo de la UI, antes de que el
         # reorden cambie el orden de los candidatos.
         seleccion_previa = {
-            (c.get("video"), c["start"], c["end"]): v.get()
-            for c, v in zip(self.candidatos, self.seleccion, strict=False)}
+            clave: v.get()
+            for clave, v in zip(_claves_seleccion(self.candidatos),
+                                self.seleccion, strict=False)}
         threading.Thread(target=self._hilo_reordenar_ollama,
                          args=(seleccion_previa,), daemon=True).start()
 
@@ -1194,6 +1454,54 @@ class AppClipIA(ctk.CTk):
         """Aplica un reorden de candidatos (corre en el hilo de la UI)."""
         self.candidatos = reordenados
         self._mostrar_clips(True, seleccion_previa)
+
+    def _editar_clip(self, clip: dict) -> None:
+        """Abre el editor de clip (sliders, onda, transcripción)."""
+        if self.ocupado:
+            messagebox.showinfo(
+                "ClipIA", "Espera a que termine el trabajo en curso.")
+            return
+        video = clip.get("video") or self.ruta_video
+        if not video:
+            return
+        segmentos = self.segmentos_por_video.get(video, self.segmentos)
+        duracion = self.duracion_por_video.get(video, self.duracion_video)
+
+        def al_guardar(inicio, fin):
+            nuevo = editor.ajustar_limites(clip, segmentos, inicio, fin,
+                                           duracion)
+            indice = None
+            for i, c in enumerate(self.candidatos):
+                if c is clip:
+                    indice = i
+                    break
+            if indice is None:
+                return
+            # La clave de selección es (video, inicio, fin): al cambiar
+            # los tiempos hay que trasladar la selección a la clave
+            # nueva para que el clip editado no vuelva a marcarse.
+            # Se traslada por índice (la lista no cambia de orden).
+            seleccionado = (self.seleccion[indice].get()
+                            if indice < len(self.seleccion) else True)
+            self.candidatos[indice] = nuevo
+            seleccion_previa = {}
+            for i, clave in enumerate(
+                    _claves_seleccion(self.candidatos)):
+                if i == indice:
+                    seleccion_previa[clave] = seleccionado
+                elif i < len(self.seleccion):
+                    seleccion_previa[clave] = self.seleccion[i].get()
+            self._mostrar_clips(seleccion_previa=seleccion_previa)
+
+            def regenerar():
+                # La miniatura era del punto medio anterior.
+                self._generar_miniaturas()
+                self._ui(self._mostrar_clips, True)
+
+            threading.Thread(target=regenerar, daemon=True).start()
+
+        DialogoEditorClip(self, clip, segmentos, video, duracion,
+                          al_guardar)
 
     def _vista_previa(self, clip: dict) -> None:
         if self.ocupado:

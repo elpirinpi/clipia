@@ -165,6 +165,19 @@ def _detectar_con_limite(ruta_video, inicio, fin, progreso, timeout=60):
     return resultado
 
 
+def _limpiar_temps_vista_previa():
+    """Borra los temporales de vistas previas y miniaturas de sesiones
+    anteriores (B10: quedaban huérfanos al cerrar la app)."""
+    base = tempfile.gettempdir()
+    try:
+        nombres = os.listdir(base)
+    except OSError:
+        return
+    for nombre in nombres:
+        if nombre.startswith(("clipia_vista_previa_", "clipia_miniaturas_")):
+            shutil.rmtree(os.path.join(base, nombre), ignore_errors=True)
+
+
 class AppClipIA(ctk.CTk):
     """Ventana principal de ClipIA."""
 
@@ -175,6 +188,10 @@ class AppClipIA(ctk.CTk):
         self.geometry("1120x720")
         self.minsize(960, 620)
         self.configure(fg_color=BG)
+        # B10: limpiar temporales de sesiones anteriores y limpiar las
+        # miniaturas al cerrar.
+        _limpiar_temps_vista_previa()
+        self.protocol("WM_DELETE_WINDOW", self._al_cerrar)
 
         # Estado
         self.ruta_video = None
@@ -244,11 +261,12 @@ class AppClipIA(ctk.CTk):
             izquierda, placeholder_text="Archivo de video (mp4, mkv, mov, webm)",
             height=36)
         self.entrada_archivo.pack(fill="x", padx=16)
-        ctk.CTkButton(
+        self.boton_examinar = ctk.CTkButton(
             izquierda, text="Examinar…", fg_color=TARJETA,
             hover_color=BORDE, text_color=TEXTO, height=32,
             command=self._elegir_archivo,
-        ).pack(anchor="w", padx=16, pady=(8, 4))
+        )
+        self.boton_examinar.pack(anchor="w", padx=16, pady=(8, 4))
 
         ctk.CTkLabel(
             izquierda, text="o pega una URL de YouTube",
@@ -279,11 +297,12 @@ class AppClipIA(ctk.CTk):
         self.entrada_salida = ctk.CTkEntry(izquierda, height=32)
         self.entrada_salida.insert(0, self.carpeta_salida)
         self.entrada_salida.pack(fill="x", padx=16)
-        ctk.CTkButton(
+        self.boton_carpeta = ctk.CTkButton(
             izquierda, text="Cambiar carpeta", fg_color=TARJETA,
             hover_color=BORDE, text_color=TEXTO, height=30,
             command=self._elegir_salida,
-        ).pack(anchor="w", padx=16, pady=(8, 4))
+        )
+        self.boton_carpeta.pack(anchor="w", padx=16, pady=(8, 4))
 
         self.check_rostros = ctk.CTkCheckBox(
             izquierda, text="Seguir rostros al exportar",
@@ -312,11 +331,12 @@ class AppClipIA(ctk.CTk):
             hover_color=BORDE, text_color=TEXTO, height=30, width=130,
             command=self._seleccionar_todo)
         self.boton_seleccionar.pack(side="right", padx=(6, 0))
-        ctk.CTkButton(
+        self.boton_crear_clip = ctk.CTkButton(
             cabecera, text="Crear clip", fg_color=TARJETA, hover_color=BORDE,
             text_color=TEXTO, height=30, width=110,
             command=self._crear_clip_manual,
-        ).pack(side="right")
+        )
+        self.boton_crear_clip.pack(side="right")
 
         self.lista_clips = ctk.CTkScrollableFrame(
             derecha, fg_color="transparent", scrollbar_button_color=BORDE)
@@ -386,11 +406,27 @@ class AppClipIA(ctk.CTk):
             self.barra_progreso.set(min(1.0, max(0.0, progreso)))
 
     def _bloquear(self, bloqueado):
+        # B10: deshabilitar también los botones y entradas que cambian
+        # el trabajo en curso (antes solo 3 botones).
         self.ocupado = bloqueado
         estado = "disabled" if bloqueado else "normal"
         self.boton_analizar.configure(state=estado)
         self.boton_exportar.configure(state=estado)
         self.boton_seleccionar.configure(state=estado)
+        self.boton_crear_clip.configure(state=estado)
+        self.boton_examinar.configure(state=estado)
+        self.boton_carpeta.configure(state=estado)
+        self.check_rostros.configure(state=estado)
+        self.entrada_archivo.configure(state=estado)
+        self.entrada_url.configure(state=estado)
+        self.entrada_salida.configure(state=estado)
+
+    def _al_cerrar(self):
+        """Limpia las miniaturas temporales y cierra la ventana (B10)."""
+        if self._dir_miniaturas:
+            shutil.rmtree(self._dir_miniaturas, ignore_errors=True)
+            self._dir_miniaturas = None
+        self.destroy()
 
     # -- Acciones ----------------------------------------------------------
 
@@ -512,7 +548,17 @@ class AppClipIA(ctk.CTk):
             except Exception:
                 clip["miniatura"] = None
 
-    def _mostrar_clips(self):
+    def _mostrar_clips(self, preservar_seleccion=False):
+        # B10: al agregar un clip manual se redibuja la lista; con
+        # preservar_seleccion se mantiene lo que el usuario desmarcó
+        # (antes todo volvía a marcado). Tras un análisis nuevo no se
+        # preserva (son otros clips).
+        seleccion_previa = {}
+        if preservar_seleccion:
+            seleccion_previa = {
+                (c["start"], c["end"]): v.get()
+                for c, v in zip(self.candidatos, self.seleccion)
+            }
         for widget in self.lista_clips.winfo_children():
             widget.destroy()
         self.seleccion = []
@@ -536,7 +582,9 @@ class AppClipIA(ctk.CTk):
             cuerpo = ctk.CTkFrame(tarjeta, fg_color="transparent")
             cuerpo.pack(side="left", fill="both", expand=True)
 
-            variable = tk.BooleanVar(value=True)
+            variable = tk.BooleanVar(
+                value=seleccion_previa.get((clip["start"], clip["end"]),
+                                            True))
             self.seleccion.append(variable)
             titulo = "Clip %d · %s · %s – %s" % (
                 i, core.formato_hora(clip["end"] - clip["start"]),
@@ -587,7 +635,7 @@ class AppClipIA(ctk.CTk):
                 "text": "Clip manual · %s – %s"
                         % (core.formato_hora(inicio), core.formato_hora(fin)),
             })
-            self._mostrar_clips()
+            self._mostrar_clips(preservar_seleccion=True)
 
         DialogoClipManual(self, self.duracion_video, agregar)
 

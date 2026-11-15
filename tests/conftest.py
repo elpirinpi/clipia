@@ -3,9 +3,35 @@
 import os
 import subprocess
 import sys
+import tempfile
+
+import pytest
 
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+@pytest.fixture
+def app(tmp_path, monkeypatch):
+    """App real con HOME y temp temporales (no toca al usuario).
+
+    Necesita pantalla: en Linux correr con xvfb-run -a."""
+    import main as app_mod
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    # tempfile cachea el directorio temporal: forzarlo aquí para que
+    # los mkdtemp de la app caigan en tmp_path.
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    aplicacion = app_mod.AppClipIA()
+    aplicacion.withdraw()
+    aplicacion.carpeta_salida = str(tmp_path / "salida")
+    os.makedirs(aplicacion.carpeta_salida, exist_ok=True)
+    yield aplicacion
+    try:
+        aplicacion.destroy()
+    except Exception:
+        pass
 
 
 def video_sintetico(ruta, duracion=5.0, audio=True):

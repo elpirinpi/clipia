@@ -1,28 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Tests de GUI del hilo de exportación (B3, B10).
+"""Tests de GUI del hilo de exportación (B3).
 
 Necesitan pantalla: en Linux correr con xvfb-run -a; en Windows (CI)
-corren con el escritorio del runner.
+corren con el escritorio del runner. La fixture `app` vive en conftest.
 """
 import os
 from unittest import mock
 
-import pytest
-
 import main as app_mod
-
-
-@pytest.fixture
-def app(tmp_path, monkeypatch):
-    """App real con HOME temporal (no toca la carpeta del usuario)."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("TMPDIR", str(tmp_path))
-    aplicacion = app_mod.AppClipIA()
-    aplicacion.withdraw()
-    aplicacion.carpeta_salida = str(tmp_path / "salida")
-    os.makedirs(aplicacion.carpeta_salida, exist_ok=True)
-    yield aplicacion
-    aplicacion.destroy()
 
 
 def test_hilo_exportar_usa_ass_temporal_unico_por_clip(app, tmp_path):

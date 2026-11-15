@@ -11,7 +11,9 @@ py -3.12 --version >nul 2>nul
 if not errorlevel 1 set PY=py -3.12
 %PY% --version >nul 2>nul
 if errorlevel 1 goto :sin_python
-%PY% -c "import customtkinter" >nul 2>nul
+REM B5: verificar TODAS las dependencias (antes solo customtkinter
+REM y la app se cerraba despues al faltar otra).
+%PY% -c "import customtkinter, faster_whisper, cv2, PIL, numpy, yt_dlp" >nul 2>nul
 if errorlevel 1 goto :instalar_deps
 goto :abrir
 :instalar_deps

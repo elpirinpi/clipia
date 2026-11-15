@@ -62,3 +62,21 @@ def test_setup_comprueba_errorlevel_de_ffmpeg_y_deno():
 
     siguiente_errorlevel("Gyan.FFmpeg", ":error_ffmpeg")
     siguiente_errorlevel("DenoLand.Deno", ":error_deno")
+
+
+def test_run_verifica_todas_las_dependencias():
+    """B5: run.bat verifica customtkinter, faster_whisper, cv2, PIL,
+    numpy y yt_dlp (antes solo customtkinter y la app se cerraba
+    después al faltar otra)."""
+    contenido = leer_bat("run.bat").decode("ascii")
+    for modulo in ("customtkinter", "faster_whisper", "cv2", "PIL",
+                   "numpy", "yt_dlp"):
+        assert modulo in contenido, \
+            "run.bat no verifica %s" % modulo
+    # El chequeo debe ir a instalar las dependencias si falta alguna.
+    ls = lineas("run.bat")
+    i_check = next(i for i, l in enumerate(ls)
+                   if "import customtkinter" in l and "faster_whisper" in l)
+    assert any("if errorlevel 1 goto :instalar_deps" in l
+               for l in ls[i_check:i_check + 2]), \
+        "el chequeo de dependencias no lleva a :instalar_deps"

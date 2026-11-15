@@ -19,7 +19,13 @@ from clipia.cola import (
                                 workers_efectivos,
                                 workers_recomendados,
 )
-from clipia.descarga import descargar_youtube
+from clipia.descarga import (
+    NAVEGADORES_COOKIES,
+    ErrorDescarga,
+    clasificar_error_descarga,
+    descargar_youtube,
+    mensaje_error_descarga,
+)
 from clipia.encoder import (
                                 descripcion_encoder,
                                 detectar_encoder,
@@ -93,10 +99,12 @@ __all__ = [
     "INSTRUCCIONES_MODELO",
     "MODELO_DEFECTO",
     "MODELOS_WHISPER",
+    "NAVEGADORES_COOKIES",
     "PALABRAS_GANCHO",
     "PLANTILLA_ASS",
     "PRESETS_SUBTITULOS",
     "ColaExportacion",
+    "ErrorDescarga",
     "ExportacionCancelada",
     "ResultadoClip",
     "TrabajoExportacion",
@@ -110,6 +118,7 @@ __all__ = [
     "_puntuar_ventana",
     "_traslapan",
     "carpeta_cache",
+    "clasificar_error_descarga",
     "clave_archivo",
     "contar",
     "descargar_youtube",
@@ -129,6 +138,7 @@ __all__ = [
     "leer_cache",
     "liberar_modelos",
     "matar_todos",
+    "mensaje_error_descarga",
     "modelo_disponible",
     "obtener_duracion",
     "obtener_modelo",

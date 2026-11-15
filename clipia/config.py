@@ -27,6 +27,9 @@ VALORES_DEFECTO: dict = {
     # Lote de transcripción (BatchedInferencePipeline): 0 = automático
     # (16 con GPU, 8 con CPU).
     "lote_transcripcion": 0,
+    # Navegador del que yt-dlp lee las cookies de YouTube (anti-bot):
+    # "ninguno" (por defecto), "chrome", "edge" o "firefox".
+    "navegador_cookies": "ninguno",
 }
 
 

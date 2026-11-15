@@ -78,6 +78,15 @@ VERDE = "#3FB950"     # estado "listo"
 PASOS = ["Cargar", "Analizar", "Clips", "Exportar"]
 
 
+def _detalle_error(error: Exception) -> str:
+    """Texto para mostrar un error al usuario: los errores de
+    descarga ya traen su mensaje accionable (qué hacer), así que se
+    muestran tal cual; los demás llevan el tipo delante."""
+    if isinstance(error, core.ErrorDescarga):
+        return str(error)
+    return "%s: %s" % (type(error).__name__, error)
+
+
 class DialogoClipManual(ctk.CTkToplevel):
     """Ventana pequeña para crear un clip manual (inicio y fin)."""
 
@@ -174,6 +183,13 @@ class DialogoAjustes(ctk.CTkToplevel):
         ("4", 4),
         ("8", 8),
         ("16", 16),
+    ]
+
+    OPCIONES_COOKIES = [
+        ("Sin cookies (recomendado)", "ninguno"),
+        ("Chrome", "chrome"),
+        ("Microsoft Edge", "edge"),
+        ("Firefox", "firefox"),
     ]
 
     def __init__(self, padre, config: dict, al_guardar) -> None:
@@ -335,6 +351,26 @@ class DialogoAjustes(ctk.CTkToplevel):
             font=ctk.CTkFont(size=11), text_color=SILENCIO,
             justify="left").pack(padx=24, pady=(8, 4), anchor="w")
 
+        ctk.CTkLabel(contenido, text="Cookies de YouTube",
+                     font=ctk.CTkFont(size=12), text_color=SILENCIO,
+                     anchor="w").pack(fill="x", padx=24, pady=(12, 4))
+        cookies_actual = config.get("navegador_cookies", "ninguno")
+        texto_cookies = next((t for t, v in self.OPCIONES_COOKIES
+                              if v == cookies_actual),
+                             self.OPCIONES_COOKIES[0][0])
+        self.variable_cookies = tk.StringVar(value=texto_cookies)
+        ctk.CTkOptionMenu(
+            contenido, values=[t for t, _v in self.OPCIONES_COOKIES],
+            variable=self.variable_cookies, width=320,
+        ).pack(padx=24)
+        ctk.CTkLabel(
+            contenido,
+            text="Si YouTube bloquea la descarga pidiendo verificar\n"
+                 "que no eres un bot, elige el navegador donde\n"
+                 "tengas sesión iniciada en YouTube.",
+            font=ctk.CTkFont(size=11), text_color=SILENCIO,
+            justify="left").pack(padx=24, pady=(8, 4), anchor="w")
+
         self.boton_guardar = ctk.CTkButton(
             self, text="Guardar", fg_color=AZUL, hover_color=AZUL_HOVER,
             command=self._guardar,
@@ -385,6 +421,9 @@ class DialogoAjustes(ctk.CTkToplevel):
         lote_elegido = self.variable_lote.get()
         valor_lote = next((v for t, v in self.OPCIONES_LOTE
                            if t == lote_elegido), 0)
+        cookies_elegido = self.variable_cookies.get()
+        valor_cookies = next((v for t, v in self.OPCIONES_COOKIES
+                              if t == cookies_elegido), "ninguno")
         self._al_guardar({"encoder": valor_encoder,
                           "modelo": self._modelo_elegido(),
                           "idioma": valor_idioma,
@@ -392,7 +431,8 @@ class DialogoAjustes(ctk.CTkToplevel):
                           "estilo_subtitulos": estilo_elegido,
                           "margen_vertical": valor_margen,
                           "ollama_modelo": modelo_ollama,
-                          "lote_transcripcion": valor_lote})
+                          "lote_transcripcion": valor_lote,
+                          "navegador_cookies": valor_cookies})
         self.destroy()
 
 
@@ -1508,7 +1548,9 @@ class AppClipIA(DnDWrapper, ctk.CTk):
             ruta = core.descargar_youtube(
                 url, carpeta,
                 progreso=lambda p: al_progreso(
-                    "Descargando video de YouTube…", p))
+                    "Descargando video de YouTube…", p),
+                navegador=self.config.get("navegador_cookies",
+                                          "ninguno"))
             self._ui(self.entrada_archivo.delete, 0, "end")
             self._ui(self.entrada_archivo.insert, 0, ruta)
         if not os.path.isfile(ruta):
@@ -1587,7 +1629,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
                      "Análisis listo: %d clips encontrados."
                      % len(self.candidatos), 1.0)
         except Exception as error:  # noqa: BLE001 - mostrar cualquier error
-            detalle = "%s: %s" % (type(error).__name__, error)
+            detalle = _detalle_error(error)
             log.exception("error en el análisis del video")
             self._ui(self._estado, "Error: %s" % detalle, 0)
             self._ui(messagebox.showerror, "ClipIA", detalle)

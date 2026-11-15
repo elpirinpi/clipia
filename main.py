@@ -382,6 +382,14 @@ class AppClipIA(ctk.CTk):
         self.ruta_video = None
         self.duracion_video = 0.0
         self.segmentos = []
+        # Fase 3: la cola multi-video analiza varios videos; cada uno
+        # guarda su transcripción y duración por ruta, y cada clip
+        # recuerda de qué video viene (clip["video"]). `segmentos` y
+        # `duracion_video` siguen siendo los del video actual (el
+        # último analizado) para compatibilidad.
+        self.segmentos_por_video: dict[str, list] = {}
+        self.duracion_por_video: dict[str, float] = {}
+        self.cola_videos: list[dict] = []  # {"ruta", "estado", "error"}
         self.candidatos = []       # dicts con start, end, score, text
         self.seleccion = []        # lista de tk.BooleanVar, una por clip
         self.config = cargar_config()
@@ -447,8 +455,11 @@ class AppClipIA(ctk.CTk):
         cuerpo.pack(fill="both", expand=True, padx=16, pady=16)
 
         # --- Columna izquierda: origen y análisis ---
-        izquierda = ctk.CTkFrame(cuerpo, fg_color=PANEL, corner_radius=12,
-                                 width=360)
+        # Con desplazamiento: la cola multi-video y los proyectos
+        # (Fase 3) alargan esta columna más que la altura de la ventana.
+        izquierda = ctk.CTkScrollableFrame(
+            cuerpo, fg_color=PANEL, corner_radius=12, width=360,
+            scrollbar_button_color=BORDE)
         izquierda.pack(side="left", fill="y", padx=(0, 12))
         izquierda.pack_propagate(False)
 
@@ -477,6 +488,12 @@ class AppClipIA(ctk.CTk):
             izquierda, placeholder_text="https://www.youtube.com/watch?v=…",
             height=36)
         self.entrada_url.pack(fill="x", padx=16)
+        self.boton_pegar_url = ctk.CTkButton(
+            izquierda, text="Pegar URL", fg_color=TARJETA,
+            hover_color=BORDE, text_color=TEXTO, height=30,
+            command=self._pegar_url,
+        )
+        self.boton_pegar_url.pack(anchor="w", padx=16, pady=(8, 4))
 
         self.boton_analizar = ctk.CTkButton(
             izquierda, text="Analizar video", fg_color=AZUL,
@@ -518,6 +535,31 @@ class AppClipIA(ctk.CTk):
             command=self._abrir_ajustes,
         )
         self.boton_ajustes.pack(anchor="w", padx=16, pady=(8, 4))
+
+        ctk.CTkLabel(
+            izquierda, text="Cola de videos",
+            font=ctk.CTkFont(size=13, weight="bold"), text_color=TEXTO,
+        ).pack(anchor="w", padx=16, pady=(16, 4))
+        self.marco_cola = ctk.CTkFrame(izquierda, fg_color="transparent")
+        self.marco_cola.pack(fill="x", padx=16)
+        self.etiqueta_cola_vacia = ctk.CTkLabel(
+            self.marco_cola, text="Sin videos en cola",
+            font=ctk.CTkFont(size=12), text_color=SILENCIO, anchor="w")
+        self.etiqueta_cola_vacia.pack(anchor="w")
+        fila_cola = ctk.CTkFrame(izquierda, fg_color="transparent")
+        fila_cola.pack(fill="x", padx=16, pady=(8, 4))
+        self.boton_agregar_cola = ctk.CTkButton(
+            fila_cola, text="Añadir videos…", fg_color=TARJETA,
+            hover_color=BORDE, text_color=TEXTO, height=30, width=140,
+            command=self._agregar_videos_cola,
+        )
+        self.boton_agregar_cola.pack(side="left")
+        self.boton_analizar_cola = ctk.CTkButton(
+            fila_cola, text="Analizar cola", fg_color=AZUL,
+            hover_color=AZUL_HOVER, text_color="white", height=30,
+            width=130, command=self._analizar_cola,
+        )
+        self.boton_analizar_cola.pack(side="left", padx=(8, 0))
 
         # --- Columna derecha: lista de clips ---
         derecha = ctk.CTkFrame(cuerpo, fg_color=PANEL, corner_radius=12)
@@ -643,6 +685,9 @@ class AppClipIA(ctk.CTk):
         self.boton_examinar.configure(state=estado)
         self.boton_carpeta.configure(state=estado)
         self.boton_ajustes.configure(state=estado)
+        self.boton_pegar_url.configure(state=estado)
+        self.boton_agregar_cola.configure(state=estado)
+        self.boton_analizar_cola.configure(state=estado)
         self.check_rostros.configure(state=estado)
         self.entrada_archivo.configure(state=estado)
         self.entrada_url.configure(state=estado)
@@ -693,6 +738,24 @@ class AppClipIA(ctk.CTk):
 
     # -- Acciones ----------------------------------------------------------
 
+    def _pegar_url(self) -> None:
+        """Pega una URL de YouTube desde el portapapeles."""
+        try:
+            texto = self.clipboard_get().strip()
+        except tk.TclError:
+            messagebox.showinfo("ClipIA",
+                                "El portapapeles no tiene texto.")
+            return
+        if not texto.startswith(("http://", "https://")):
+            messagebox.showinfo(
+                "ClipIA",
+                "El portapapeles no tiene una URL (debe empezar por "
+                "http:// o https://).")
+            return
+        self.entrada_url.delete(0, "end")
+        self.entrada_url.insert(0, texto)
+        self.entrada_archivo.delete(0, "end")
+
     def _elegir_archivo(self) -> None:
         ruta = filedialog.askopenfilename(
             title="Elegir video",
@@ -730,6 +793,164 @@ class AppClipIA(ctk.CTk):
             self.entrada_salida.delete(0, "end")
             self.entrada_salida.insert(0, alternativa)
 
+    def _agregar_videos_cola(self) -> None:
+        """Añade videos a la cola multi-video (sin duplicados)."""
+        rutas = filedialog.askopenfilenames(
+            title="Añadir videos a la cola",
+            filetypes=[("Videos", "*.mp4 *.mkv *.mov *.webm *.avi"),
+                       ("Todos los archivos", "*.*")])
+        en_cola = {v["ruta"] for v in self.cola_videos}
+        for ruta in rutas:
+            if ruta and ruta not in en_cola:
+                self.cola_videos.append({"ruta": ruta,
+                                         "estado": "pendiente",
+                                         "error": None})
+                en_cola.add(ruta)
+        self._mostrar_cola()
+
+    def _mostrar_cola(self) -> None:
+        """Redibuja la lista de videos en cola con su estado."""
+        for widget in self.marco_cola.winfo_children():
+            widget.destroy()
+        if not self.cola_videos:
+            ctk.CTkLabel(self.marco_cola, text="Sin videos en cola",
+                         font=ctk.CTkFont(size=12), text_color=SILENCIO,
+                         anchor="w").pack(anchor="w")
+            return
+        colores = {"pendiente": SILENCIO, "analizando": AZUL,
+                   "listo": VERDE, "error": ROJO}
+        for video in self.cola_videos:
+            estado = video["estado"]
+            texto = "%s — %s" % (os.path.basename(video["ruta"]), estado)
+            ctk.CTkLabel(self.marco_cola, text=texto,
+                         font=ctk.CTkFont(size=12),
+                         text_color=colores.get(estado, SILENCIO),
+                         anchor="w").pack(anchor="w", fill="x")
+
+    def _analizar_cola(self) -> None:
+        """Analiza los videos pendientes de la cola, uno tras otro."""
+        if self.ocupado:
+            return
+        pendientes = [v for v in self.cola_videos
+                      if v["estado"] in ("pendiente", "error")]
+        if not pendientes:
+            messagebox.showinfo(
+                "ClipIA",
+                "La cola está vacía o ya está analizada.\n"
+                "Usa «Añadir videos…» para agregar videos.")
+            return
+        self._asegurar_carpeta_salida()
+        self._bloquear(True)
+        self._ir_paso(1)
+        threading.Thread(target=self._hilo_cola, daemon=True).start()
+
+    def _hilo_cola(self) -> None:
+        """Analiza la cola video a video; un video con error no tumba
+        los demás (queda marcado como error y se sigue)."""
+        pendientes = [v for v in self.cola_videos
+                      if v["estado"] in ("pendiente", "error")]
+        total = len(pendientes)
+        listos = 0
+        try:
+            for i, video in enumerate(pendientes, start=1):
+                video["estado"] = "analizando"
+                video["error"] = None
+                self._ui(self._mostrar_cola)
+                nombre = os.path.basename(video["ruta"])
+                try:
+                    resultado = self._analizar_video(
+                        video["ruta"], "",
+                        lambda texto, valor, i=i, total=total, nombre=nombre:
+                        self._ui(self._estado,
+                                 "Video %d de %d (%s): %s"
+                                 % (i, total, nombre, texto),
+                                 (i - 1 + (valor or 0)) / total))
+                    self._aplicar_analisis(resultado, reemplazar=False)
+                    video["estado"] = "listo"
+                    listos += 1
+                except Exception as error:  # noqa: BLE001 - por video
+                    video["estado"] = "error"
+                    video["error"] = "%s: %s" % (type(error).__name__, error)
+                    log.exception("error al analizar %s", video["ruta"])
+                self._ui(self._mostrar_cola)
+            self._ui(self._estado, "Generando miniaturas…", 0.98)
+            self._generar_miniaturas()
+            self._ui(self._mostrar_clips, True)
+            self._ui(self._ir_paso, 2)
+            self._ui(self._estado,
+                     "Cola terminada: %d de %d video(s) analizados, "
+                     "%d clips en total."
+                     % (listos, total, len(self.candidatos)), 1.0)
+        except Exception as error:  # noqa: BLE001 - mostrar cualquier error
+            detalle = "%s: %s" % (type(error).__name__, error)
+            log.exception("error en la cola de videos")
+            self._ui(self._estado, "Error: %s" % detalle, 0)
+            self._ui(messagebox.showerror, "ClipIA", detalle)
+            self._ui(self._ir_paso, 0)
+        finally:
+            self._ui(self._bloquear, False)
+
+    def _analizar_video(self, ruta: str, url: str, al_progreso) -> dict:
+        """Analiza un video: descarga (si es URL), duración,
+        transcripción y momentos. Corre en un hilo de trabajo;
+        `al_progreso(texto, valor)` recibe los avances (el llamador
+        los reenvía al hilo de la UI). Devuelve {"ruta_video",
+        "duracion", "segmentos", "candidatos"} y marca cada candidato
+        con su video (clip["video"]). Lanza la excepción si algo falla.
+        """
+        if url:
+            al_progreso("Descargando video de YouTube…", 0)
+            carpeta = os.path.join(self.carpeta_salida, "descargas")
+            ruta = core.descargar_youtube(
+                url, carpeta,
+                progreso=lambda p: al_progreso(
+                    "Descargando video de YouTube…", p))
+            self._ui(self.entrada_archivo.delete, 0, "end")
+            self._ui(self.entrada_archivo.insert, 0, ruta)
+        if not os.path.isfile(ruta):
+            raise FileNotFoundError("No se encontró el archivo: %s" % ruta)
+        duracion = core.obtener_duracion(ruta)
+        al_progreso("Transcribiendo audio con IA…", 0)
+        segmentos = core.transcribir(
+            ruta,
+            modelo=self.config.get("modelo", "base"),
+            idioma=self.config.get("idioma", "es"),
+            progreso=lambda p: al_progreso(
+                "Transcribiendo audio con IA…", p))
+        if not segmentos:
+            raise RuntimeError("No se detectó habla en el video.")
+        al_progreso("Buscando los mejores momentos…", 0.95)
+        candidatos = core.detectar_momentos(segmentos, duracion,
+                                            cantidad=10)
+        if not candidatos:
+            raise RuntimeError("No se encontraron momentos para clips.")
+        for clip in candidatos:
+            clip["video"] = ruta
+        return {"ruta_video": ruta, "duracion": duracion,
+                "segmentos": segmentos, "candidatos": candidatos}
+
+    def _aplicar_analisis(self, resultado: dict,
+                          reemplazar: bool = True) -> None:
+        """Guarda un análisis terminado en el estado de la app (corre
+        en el hilo de trabajo, como el resto del estado; solo los
+        widgets van por la cola de UI). Con `reemplazar` los clips
+        nuevos sustituyen a los anteriores (análisis de un video);
+        sin él, se añaden (cola multi-video)."""
+        ruta = resultado["ruta_video"]
+        self.ruta_video = ruta
+        self.duracion_video = resultado["duracion"]
+        self.segmentos = resultado["segmentos"]
+        self.segmentos_por_video[ruta] = resultado["segmentos"]
+        self.duracion_por_video[ruta] = resultado["duracion"]
+        if reemplazar:
+            self.candidatos = list(resultado["candidatos"])
+        else:
+            self.candidatos.extend(resultado["candidatos"])
+        self._ui(self.etiqueta_video.configure,
+                 text="Video: %s · %s"
+                 % (os.path.basename(ruta),
+                    core.formato_hora(resultado["duracion"])))
+
     def _analizar(self) -> None:
         if self.ocupado:
             return
@@ -748,44 +969,12 @@ class AppClipIA(ctk.CTk):
 
     def _hilo_analizar(self, ruta: str, url: str) -> None:
         try:
-            if url:
-                self._ui(self._estado, "Descargando video de YouTube…", 0)
-                carpeta = os.path.join(self.carpeta_salida, "descargas")
-                ruta = core.descargar_youtube(
-                    url, carpeta,
-                    progreso=lambda p: self._ui(
-                        self._estado, "Descargando video de YouTube…", p))
-                self._ui(self.entrada_archivo.delete, 0, "end")
-                self._ui(self.entrada_archivo.insert, 0, ruta)
-            if not os.path.isfile(ruta):
-                raise FileNotFoundError("No se encontró el archivo: %s" % ruta)
-
-            self.ruta_video = ruta
-            self.duracion_video = core.obtener_duracion(ruta)
-            self._ui(self.etiqueta_video.configure,
-                     text="Video: %s · %s"
-                     % (os.path.basename(ruta),
-                        core.formato_hora(self.duracion_video)))
-
-            self._ui(self._estado, "Transcribiendo audio con IA…", 0)
-            self.segmentos = core.transcribir(
-                ruta,
-                modelo=self.config.get("modelo", "base"),
-                idioma=self.config.get("idioma", "es"),
-                progreso=lambda p: self._ui(self._estado,
-                                            "Transcribiendo audio con IA…", p))
-            if not self.segmentos:
-                raise RuntimeError("No se detectó habla en el video.")
-
-            self._ui(self._estado, "Buscando los mejores momentos…", 0.95)
-            self.candidatos = core.detectar_momentos(
-                self.segmentos, self.duracion_video, cantidad=10)
-            if not self.candidatos:
-                raise RuntimeError("No se encontraron momentos para clips.")
-
+            resultado = self._analizar_video(
+                ruta, url,
+                lambda texto, valor: self._ui(self._estado, texto, valor))
+            self._aplicar_analisis(resultado, reemplazar=True)
             self._ui(self._estado, "Generando miniaturas…", 0.98)
             self._generar_miniaturas()
-
             self._ui(self._mostrar_clips)
             self._ui(self._ir_paso, 2)
             self._ui(self._estado,
@@ -801,32 +990,44 @@ class AppClipIA(ctk.CTk):
             self._ui(self._bloquear, False)
 
     def _generar_miniaturas(self) -> None:
-        """Genera una miniatura vertical por clip, en paralelo.
+        """Genera una miniatura vertical por clip que aún no la tenga,
+        en paralelo.
 
         Corre en el hilo de análisis. Cada miniatura es un ffmpeg
         aparte (un solo fotograma), así que 4 en paralelo recortan el
         tiempo total sin saturar la CPU. Si una falla, ese clip queda
-        sin miniatura y los demás siguen.
+        sin miniatura y los demás siguen. En la cola multi-video cada
+        clip usa su propio video, y los clips que ya tienen miniatura
+        (de un video anterior de la cola) no se regeneran.
         """
-        if self._dir_miniaturas:
-            shutil.rmtree(self._dir_miniaturas, ignore_errors=True)
-        self._dir_miniaturas = tempfile.mkdtemp(prefix="clipia_miniaturas_")
+        if not self._dir_miniaturas or not os.path.isdir(
+                self._dir_miniaturas):
+            self._dir_miniaturas = tempfile.mkdtemp(
+                prefix="clipia_miniaturas_")
+        pendientes = [(i, clip) for i, clip in enumerate(self.candidatos)
+                      if not clip.get("miniatura")
+                      or not os.path.isfile(clip["miniatura"])]
 
         def generar(i_clip):
             i, clip = i_clip
-            ruta = os.path.join(self._dir_miniaturas, "clip%02d.jpg" % i)
+            fd, ruta = tempfile.mkstemp(
+                suffix=".jpg", prefix="mini_",
+                dir=self._dir_miniaturas)
+            os.close(fd)
             try:
                 core.generar_miniatura(
-                    self.ruta_video, (clip["start"] + clip["end"]) / 2, ruta)
+                    clip.get("video") or self.ruta_video,
+                    (clip["start"] + clip["end"]) / 2, ruta)
                 return i, ruta
             except Exception:
+                if os.path.exists(ruta):
+                    os.remove(ruta)
                 return i, None
 
         with ThreadPoolExecutor(max_workers=4) as ejecutor:
             # map conserva el orden: cada resultado vuelve a su clip.
-            for i, ruta in ejecutor.map(
-                    generar, enumerate(self.candidatos, start=1)):
-                self.candidatos[i - 1]["miniatura"] = ruta
+            for i, ruta in ejecutor.map(generar, pendientes):
+                self.candidatos[i]["miniatura"] = ruta
 
     def _mostrar_clips(self, preservar_seleccion: bool = False,
                        seleccion_previa: dict | None = None) -> None:
@@ -841,14 +1042,17 @@ class AppClipIA(ctk.CTk):
             if preservar_seleccion:
                 # Las listas pueden diferir en uno: el clip manual recién
                 # agregado aún no tiene selección (queda en True).
+                # La clave incluye el video: dos clips de videos
+                # distintos pueden tener los mismos tiempos.
                 for i, c in enumerate(self.candidatos):
                     if i < len(self.seleccion):
-                        seleccion_previa[(c["start"], c["end"])] = \
-                            self.seleccion[i].get()
+                        seleccion_previa[(c.get("video"), c["start"],
+                                          c["end"])] = self.seleccion[i].get()
         for widget in self.lista_clips.winfo_children():
             widget.destroy()
         self.seleccion = []
         self._imagenes_miniaturas = []
+        videos_distintos = {c.get("video") for c in self.candidatos}
         for i, clip in enumerate(self.candidatos, start=1):
             tarjeta = ctk.CTkFrame(self.lista_clips, fg_color=TARJETA,
                                    corner_radius=10)
@@ -869,13 +1073,17 @@ class AppClipIA(ctk.CTk):
             cuerpo.pack(side="left", fill="both", expand=True)
 
             variable = tk.BooleanVar(
-                value=seleccion_previa.get((clip["start"], clip["end"]),
-                                            True))
+                value=seleccion_previa.get(
+                    (clip.get("video"), clip["start"], clip["end"]), True))
             self.seleccion.append(variable)
             titulo = "Clip %d · %s · %s – %s" % (
                 i, core.formato_hora(clip["end"] - clip["start"]),
                 core.formato_hora(clip["start"]),
                 core.formato_hora(clip["end"]))
+            # Con varios videos en la lista, cada tarjeta dice de cuál
+            # viene el clip.
+            if len(videos_distintos) > 1 and clip.get("video"):
+                titulo += " · %s" % os.path.basename(clip["video"])
             ctk.CTkCheckBox(
                 cuerpo, text=titulo, variable=variable,
                 font=ctk.CTkFont(size=13, weight="bold"), text_color=TEXTO,
@@ -920,6 +1128,7 @@ class AppClipIA(ctk.CTk):
                 "start": inicio, "end": fin, "score": 0.0,
                 "text": "Clip manual · %s – %s"
                         % (core.formato_hora(inicio), core.formato_hora(fin)),
+                "video": self.ruta_video,
             })
             self._mostrar_clips(preservar_seleccion=True)
 
@@ -940,7 +1149,7 @@ class AppClipIA(ctk.CTk):
         # La selección se captura en el hilo de la UI, antes de que el
         # reorden cambie el orden de los candidatos.
         seleccion_previa = {
-            (c["start"], c["end"]): v.get()
+            (c.get("video"), c["start"], c["end"]): v.get()
             for c, v in zip(self.candidatos, self.seleccion, strict=False)}
         threading.Thread(target=self._hilo_reordenar_ollama,
                          args=(seleccion_previa,), daemon=True).start()
@@ -997,7 +1206,8 @@ class AppClipIA(ctk.CTk):
         self._estado("Generando vista previa…", 0)
         threading.Thread(
             target=self._hilo_vista_previa,
-            args=(clip, self.ruta_video, self.seguir_rostros.get()),
+            args=(clip, clip.get("video") or self.ruta_video,
+                  self.seguir_rostros.get()),
             daemon=True).start()
 
     def _hilo_vista_previa(self, clip: dict, ruta_video: str,
@@ -1063,14 +1273,15 @@ class AppClipIA(ctk.CTk):
         threading.Thread(
             target=self._hilo_exportar,
             args=(elegidos, self.ruta_video, list(self.segmentos),
-                  self.seguir_rostros.get()),
+                  self.seguir_rostros.get(),
+                  dict(self.segmentos_por_video)),
             daemon=True).start()
 
     def _hilo_exportar(self, elegidos: list[dict], ruta_video: str,
-                       segmentos: list[dict], seguir_rostros: bool) -> None:
+                       segmentos: list[dict], seguir_rostros: bool,
+                       segmentos_por_video: dict | None = None) -> None:
         try:
             os.makedirs(self.carpeta_salida, exist_ok=True)
-            base = os.path.splitext(os.path.basename(ruta_video))[0]
             total = len(elegidos)
             encoder = detectar_encoder(self.config.get("encoder", "auto"))
             workers = workers_efectivos(
@@ -1078,12 +1289,20 @@ class AppClipIA(ctk.CTk):
             cancelar = self._cancelar_exportacion or threading.Event()
             trabajos = []
             for i, clip in enumerate(elegidos, start=1):
+                # Cada clip se exporta desde su propio video (cola
+                # multi-video); sin "video" se usa el actual.
+                video_clip = clip.get("video") or ruta_video
+                base = os.path.splitext(os.path.basename(video_clip))[0]
                 nombre = "%s_clip%02d_%s-%s.mp4" % (
                     base, i, core.formato_hora(clip["start"]).replace(":", ""),
                     core.formato_hora(clip["end"]).replace(":", ""))
+                segmentos_clip = segmentos
+                if segmentos_por_video:
+                    segmentos_clip = segmentos_por_video.get(
+                        video_clip, segmentos)
                 trabajos.append(TrabajoExportacion(
-                    clip=clip, ruta_video=ruta_video,
-                    segmentos=list(segmentos),
+                    clip=clip, ruta_video=video_clip,
+                    segmentos=list(segmentos_clip),
                     carpeta_salida=self.carpeta_salida, nombre=nombre,
                     seguir_rostros=seguir_rostros, encoder=encoder,
                     estilo=self.config.get("estilo_subtitulos",

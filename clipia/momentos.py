@@ -80,6 +80,38 @@ def _puntuar_ventana(frases: list[dict], inicio: float, fin: float) -> float:
     return 0.45 * densidad + 0.30 * gancho_puntos + 0.25 * signos_puntos
 
 
+def _snap_fin(frases: list[dict], inicio: float, fin_deseado: float,
+              duracion_video: float, minimo: float = 25.0) -> float:
+    """Ajusta `fin_deseado` a una frontera de frase.
+
+    Devuelve el fin de la última frase que termina dentro de la
+    ventana, para no cortar a media frase. Si eso deja el clip por
+    debajo de `minimo` segundos, lo alarga hasta la siguiente frontera
+    de frase. Si una sola frase cubre toda la ventana, el fin es el
+    fin de esa frase. El fin del video siempre es una frontera válida.
+    """
+    if fin_deseado >= duracion_video:
+        return float(duracion_video)
+    fines = sorted({f["end"] for f in frases
+                    if f["start"] < fin_deseado and f["end"] > inicio})
+    if not fines:
+        # Sin frases en la ventana: no hay nada que cortar.
+        return float(fin_deseado)
+    dentro = [f for f in fines if f <= fin_deseado]
+    if dentro:
+        fin = dentro[-1]
+        if fin - inicio >= minimo:
+            return fin
+        # Quedó corto: alargar a la siguiente frontera de frase.
+        siguientes = [f for f in fines if f > fin_deseado]
+        if siguientes:
+            return min(siguientes[0], duracion_video)
+        return fin
+    # Ninguna frase termina dentro: la primera que termina después
+    # (una frase larga cubre la ventana).
+    return min(fines[0], duracion_video)
+
+
 def _traslapan(a_inicio: float, a_fin: float, b_inicio: float, b_fin: float,
                umbral: float = 0.5) -> bool:
     """True si el traslape entre dos ventanas supera el umbral."""
@@ -108,9 +140,12 @@ def detectar_momentos(segmentos: list[dict], duracion_video: float,
     candidatos = []
     vistos = set()
     for frase in frases:
+        # El inicio ya es frontera de frase (empieza en una frase); el
+        # fin se ajusta a la frontera de frase más cercana para no
+        # cortar a media palabra.
         inicio = frase["start"]
         for dur in DURACIONES_VENTANA:
-            fin = min(duracion_video, inicio + dur)
+            fin = _snap_fin(frases, inicio, inicio + dur, duracion_video)
             if fin - inicio < 25:
                 continue
             clave = (round(inicio, 1), round(fin, 1))

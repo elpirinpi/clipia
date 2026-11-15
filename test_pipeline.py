@@ -168,6 +168,21 @@ def main() -> int:
         print("\nFALLO: no se detectaron momentos (¿el video tiene habla?).")
         return 1
 
+    # Verificación Fase 2: ningún candidato corta a media frase (sus
+    # límites deben coincidir con fronteras de frase o con el fin del
+    # video).
+    frases = core._frases_de_segmentos(segmentos)
+    cortes = [(c, frontera) for c in candidatos
+              for frontera in (c["start"], c["end"])
+              for f in frases
+              if f["start"] < frontera < f["end"]]
+    cortes_ok = not cortes
+    if cortes:
+        print("      FALLO: %d candidato(s) cortan a media frase."
+              % len(cortes))
+    else:
+        print("      Límites: 0 cortes a media frase.")
+
     primer_clip = candidatos[0]
 
     # 3. Rostros + vista previa del primer clip
@@ -219,7 +234,7 @@ def main() -> int:
 
     # 5. Verificación
     print("\n[5/5] Verificando clips con ffprobe...")
-    ok = preview_ok
+    ok = preview_ok and cortes_ok
     for ruta_clip, clip, ruta_ass in exportados:
         info = verificar_clip(ruta_clip)
         pedida = clip["end"] - clip["start"]

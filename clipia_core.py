@@ -33,15 +33,22 @@ from clipia.subtitulos import (
                                 generar_subtitulos_ass,
 )
 from clipia.transcripcion import (
+                                IDIOMAS,
+                                MODELOS_WHISPER,
                                 _elegir_dispositivo,
                                 _extraer_audio_wav,
                                 _leer_wav_numpy,
+                                liberar_modelos,
+                                obtener_modelo,
+                                ram_total_gb,
                                 transcribir,
 )
 from clipia.utilidades import formato_ass, formato_hora, obtener_duracion
 
 __all__ = [
     "DURACIONES_VENTANA",
+    "IDIOMAS",
+    "MODELOS_WHISPER",
     "PALABRAS_GANCHO",
     "PLANTILLA_ASS",
     "_elegir_dispositivo",
@@ -64,7 +71,10 @@ __all__ = [
     "generar_miniatura",
     "generar_subtitulos_ass",
     "generar_vista_previa",
+    "liberar_modelos",
     "obtener_duracion",
+    "obtener_modelo",
     "opciones_encoder",
+    "ram_total_gb",
     "transcribir",
 ]

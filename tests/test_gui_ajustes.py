@@ -34,7 +34,54 @@ def test_dialogo_ajustes_guarda_encoder(app):
             dialogo.destroy()
         except Exception:
             pass
-    assert guardados == {"encoder": "libx264"}
+    assert guardados["encoder"] == "libx264"
+    assert guardados["modelo"] == "base"
+    assert guardados["idioma"] == "es"
+
+
+def test_dialogo_ajustes_muestra_modelo_e_idioma(app):
+    dialogo = app_mod.DialogoAjustes(
+        app, {"encoder": "auto", "modelo": "small", "idioma": "en"},
+        lambda valores: None)
+    try:
+        assert "Small" in dialogo.variable_modelo.get()
+        assert dialogo.variable_idioma.get() == "Inglés"
+    finally:
+        dialogo.destroy()
+
+
+def test_dialogo_ajustes_guarda_modelo_e_idioma(app):
+    guardados = {}
+    dialogo = app_mod.DialogoAjustes(app, {"encoder": "auto"},
+                                     guardados.update)
+    try:
+        dialogo.variable_modelo.set(
+            "Small · ~470 MB · más preciso")
+        dialogo.variable_idioma.set("Autodetectar")
+        dialogo._guardar()
+    finally:
+        try:
+            dialogo.destroy()
+        except Exception:
+            pass
+    assert guardados["modelo"] == "small"
+    assert guardados["idioma"] == "auto"
+
+
+def test_aviso_ram_advierte_si_falta_ram(app):
+    dialogo = app_mod.DialogoAjustes(app, {"encoder": "auto"},
+                                     lambda valores: None)
+    try:
+        dialogo._ram_total = 4.0
+        dialogo.variable_modelo.set(
+            "Large v3 · ~3.1 GB · máxima precisión")
+        dialogo._actualizar_aviso_ram()
+        assert "⚠" in dialogo.etiqueta_ram.cget("text")
+        dialogo._ram_total = 16.0
+        dialogo._actualizar_aviso_ram()
+        assert "⚠" not in dialogo.etiqueta_ram.cget("text")
+    finally:
+        dialogo.destroy()
 
 
 def test_al_guardar_ajustes_actualiza_config(app, monkeypatch):

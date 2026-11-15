@@ -13,10 +13,19 @@ from .exportacion import exportar_clip, generar_miniatura, generar_vista_previa
 from .momentos import detectar_momentos
 from .rostros import detectar_rostros
 from .subtitulos import generar_subtitulos_ass
-from .transcripcion import transcribir
+from .transcripcion import (
+    IDIOMAS,
+    MODELOS_WHISPER,
+    liberar_modelos,
+    obtener_modelo,
+    ram_total_gb,
+    transcribir,
+)
 from .utilidades import formato_ass, formato_hora, obtener_duracion
 
 __all__ = [
+    "IDIOMAS",
+    "MODELOS_WHISPER",
     "descargar_youtube",
     "descripcion_encoder",
     "detectar_encoder",
@@ -28,7 +37,10 @@ __all__ = [
     "generar_miniatura",
     "generar_subtitulos_ass",
     "generar_vista_previa",
+    "liberar_modelos",
     "obtener_duracion",
+    "obtener_modelo",
     "opciones_encoder",
+    "ram_total_gb",
     "transcribir",
 ]

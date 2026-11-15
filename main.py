@@ -27,6 +27,7 @@ import clipia_core as core
 from clipia.config import cargar_config, guardar_config
 from clipia.encoder import descripcion_encoder, detectar_encoder
 from clipia.logs import configurar_logging
+from clipia.transcripcion import IDIOMAS, MODELOS_WHISPER, ram_total_gb
 
 log = logging.getLogger("clipia.gui")
 
@@ -135,12 +136,13 @@ class DialogoAjustes(ctk.CTkToplevel):
     def __init__(self, padre, config: dict, al_guardar) -> None:
         super().__init__(padre)
         self.title("Ajustes")
-        self.geometry("400x260")
+        self.geometry("400x480")
         self.resizable(False, False)
         self.configure(fg_color=PANEL)
         self.transient(padre)
         self.grab_set()
         self._al_guardar = al_guardar
+        self._ram_total = ram_total_gb()
 
         ctk.CTkLabel(self, text="Ajustes",
                      font=ctk.CTkFont(size=16, weight="bold"),
@@ -165,16 +167,75 @@ class DialogoAjustes(ctk.CTkToplevel):
             font=ctk.CTkFont(size=11), text_color=SILENCIO,
             justify="left").pack(padx=24, pady=(8, 4), anchor="w")
 
+        ctk.CTkLabel(self, text="Modelo de voz (transcripción)",
+                     font=ctk.CTkFont(size=12), text_color=SILENCIO,
+                     anchor="w").pack(fill="x", padx=24, pady=(12, 4))
+        modelo_actual = config.get("modelo", "base")
+        if modelo_actual not in MODELOS_WHISPER:
+            modelo_actual = "base"
+        self.variable_modelo = tk.StringVar(
+            value=MODELOS_WHISPER[modelo_actual]["descripcion"])
+        ctk.CTkOptionMenu(
+            self, values=[m["descripcion"]
+                          for m in MODELOS_WHISPER.values()],
+            variable=self.variable_modelo, width=320,
+            command=lambda _v: self._actualizar_aviso_ram(),
+        ).pack(padx=24)
+        self.etiqueta_ram = ctk.CTkLabel(
+            self, text="", font=ctk.CTkFont(size=11),
+            text_color=SILENCIO, justify="left")
+        self.etiqueta_ram.pack(padx=24, pady=(8, 4), anchor="w")
+        self._actualizar_aviso_ram()
+
+        ctk.CTkLabel(self, text="Idioma del audio",
+                     font=ctk.CTkFont(size=12), text_color=SILENCIO,
+                     anchor="w").pack(fill="x", padx=24, pady=(12, 4))
+        idioma_actual = config.get("idioma", "es")
+        texto_idioma = next((t for c, t in IDIOMAS if c == idioma_actual),
+                            IDIOMAS[0][1])
+        self.variable_idioma = tk.StringVar(value=texto_idioma)
+        ctk.CTkOptionMenu(
+            self, values=[t for _c, t in IDIOMAS],
+            variable=self.variable_idioma, width=320,
+        ).pack(padx=24)
+
         ctk.CTkButton(
             self, text="Guardar", fg_color=AZUL, hover_color=AZUL_HOVER,
             command=self._guardar,
         ).pack(pady=(16, 8))
 
+    def _modelo_elegido(self) -> str:
+        elegido = self.variable_modelo.get()
+        return next((c for c, m in MODELOS_WHISPER.items()
+                     if m["descripcion"] == elegido), "base")
+
+    def _actualizar_aviso_ram(self) -> None:
+        """Aviso de RAM según el modelo elegido y la RAM del equipo."""
+        necesario = MODELOS_WHISPER[self._modelo_elegido()]["ram_gb"]
+        if self._ram_total is None:
+            texto = "Necesita unos %d GB de RAM." % necesario
+            color = SILENCIO
+        elif self._ram_total >= necesario:
+            texto = ("Necesita unos %d GB de RAM "
+                     "(tu PC tiene ~%.0f GB)." % (necesario, self._ram_total))
+            color = SILENCIO
+        else:
+            texto = ("⚠ Necesita unos %d GB de RAM y tu PC tiene ~%.0f GB:\n"
+                     "puede ir muy lento o fallar."
+                     % (necesario, self._ram_total))
+            color = ROJO
+        self.etiqueta_ram.configure(text=texto, text_color=color)
+
     def _guardar(self) -> None:
         elegido = self.variable_encoder.get()
-        valor = next((v for t, v in self.OPCIONES_ENCODER
-                      if t == elegido), "auto")
-        self._al_guardar({"encoder": valor})
+        valor_encoder = next((v for t, v in self.OPCIONES_ENCODER
+                              if t == elegido), "auto")
+        idioma_elegido = self.variable_idioma.get()
+        valor_idioma = next((c for c, t in IDIOMAS
+                             if t == idioma_elegido), "es")
+        self._al_guardar({"encoder": valor_encoder,
+                          "modelo": self._modelo_elegido(),
+                          "idioma": valor_idioma})
         self.destroy()
 
 
@@ -628,6 +689,8 @@ class AppClipIA(ctk.CTk):
             self._ui(self._estado, "Transcribiendo audio con IA…", 0)
             self.segmentos = core.transcribir(
                 ruta,
+                modelo=self.config.get("modelo", "base"),
+                idioma=self.config.get("idioma", "es"),
                 progreso=lambda p: self._ui(self._estado,
                                             "Transcribiendo audio con IA…", p))
             if not self.segmentos:

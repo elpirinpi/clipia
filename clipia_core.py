@@ -49,7 +49,11 @@ def formato_ass(segundos):
 
 
 def obtener_duracion(ruta_video):
-    """Duración en segundos de un video, usando ffprobe."""
+    """Duración en segundos de un video, usando ffprobe.
+
+    B8: algunos MKV/WebM devuelven format=duration "N/A" y el float()
+    reventaba; en ese caso se usa la duración del primer flujo de video.
+    """
     resultado = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "default=noprint_wrappers=1:nokey=1", ruta_video],
@@ -58,7 +62,26 @@ def obtener_duracion(ruta_video):
     if resultado.returncode != 0:
         raise RuntimeError("ffprobe no pudo leer el video: %s"
                            % resultado.stderr.strip())
-    return float(resultado.stdout.strip())
+    try:
+        return float(resultado.stdout.strip())
+    except ValueError:
+        pass
+    # Fallback: duración del primer flujo de video.
+    resultado = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", ruta_video],
+        capture_output=True, text=True, timeout=60,
+    )
+    if resultado.returncode != 0:
+        raise RuntimeError("ffprobe no pudo leer el video: %s"
+                           % resultado.stderr.strip())
+    try:
+        return float(resultado.stdout.strip())
+    except ValueError:
+        pass
+    raise RuntimeError("ffprobe no pudo determinar la duración de: %s"
+                       % ruta_video)
 
 
 def _escapar_ruta_subtitulos(ruta):

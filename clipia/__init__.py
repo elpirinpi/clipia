@@ -4,6 +4,11 @@ API pública del paquete; clipia_core.py re-exporta lo mismo para
 compatibilidad con main.py, test_pipeline.py y los tests existentes.
 """
 from .descarga import descargar_youtube
+from .encoder import (
+    descripcion_encoder,
+    detectar_encoder,
+    opciones_encoder,
+)
 from .exportacion import exportar_clip, generar_miniatura, generar_vista_previa
 from .momentos import detectar_momentos
 from .rostros import detectar_rostros
@@ -13,6 +18,8 @@ from .utilidades import formato_ass, formato_hora, obtener_duracion
 
 __all__ = [
     "descargar_youtube",
+    "descripcion_encoder",
+    "detectar_encoder",
     "detectar_momentos",
     "detectar_rostros",
     "exportar_clip",
@@ -22,5 +29,6 @@ __all__ = [
     "generar_subtitulos_ass",
     "generar_vista_previa",
     "obtener_duracion",
+    "opciones_encoder",
     "transcribir",
 ]

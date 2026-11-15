@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from collections.abc import Callable
 
+from .encoder import detectar_encoder, opciones_encoder
 from .rostros import _expresion_rostros
 
 
@@ -13,16 +14,20 @@ def exportar_clip(ruta_video: str, inicio: float, fin: float,
                   progreso: Callable[[float], None] | None = None,
                   rostros: list[tuple[float, float]] | None = None,
                   ancho: int = 1080, alto: int = 1920,
-                  con_subtitulos: bool = True) -> str:
+                  con_subtitulos: bool = True,
+                  encoder: str | None = None) -> str:
     """Exporta un clip vertical con subtítulos quemados.
 
     `progreso` es una función opcional que recibe un valor 0.0-1.0.
     `rostros` es la lista de (t, x) de detectar_rostros: si se da, el
     recorte vertical sigue la cara en vez de centrarse. `ancho`/`alto`
-    son el tamaño de salida (1080x1920 por defecto). Devuelve la ruta
-    del clip exportado.
+    son el tamaño de salida (1080x1920 por defecto). `encoder` es el
+    codificador concreto (p. ej. "h264_nvenc"); con None se autodetecta
+    el mejor disponible (hardware o libx264). Devuelve la ruta del
+    clip exportado.
     """
     duracion = max(0.1, fin - inicio)
+    encoder_usado = encoder or detectar_encoder("auto")
     # Rutas absolutas: la exportación puede cambiar el cwd (ver B9).
     ruta_video = os.path.abspath(ruta_video)
     ruta_salida = os.path.abspath(ruta_salida)
@@ -51,7 +56,7 @@ def exportar_clip(ruta_video: str, inicio: float, fin: float,
         # multipista ffmpeg elegía otro audio. La "?" hace el audio
         # opcional (videos sin pista de audio).
         "-map", "0:v:0", "-map", "0:a:0?",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        *opciones_encoder(encoder_usado),
         "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart",
@@ -108,9 +113,10 @@ def generar_miniatura(ruta_video: str, instante: float, ruta_salida: str,
 def generar_vista_previa(ruta_video: str, inicio: float, fin: float,
                          ruta_salida: str,
                          rostros: list[tuple[float, float]] | None = None,
-                         progreso: Callable[[float], None] | None = None
-                         ) -> str:
+                         progreso: Callable[[float], None] | None = None,
+                         encoder: str | None = None) -> str:
     """Genera una vista previa rápida (540x960, sin subtítulos)."""
     return exportar_clip(ruta_video, inicio, fin, None, ruta_salida,
                          progreso=progreso, rostros=rostros,
-                         ancho=540, alto=960, con_subtitulos=False)
+                         ancho=540, alto=960, con_subtitulos=False,
+                         encoder=encoder)

@@ -25,6 +25,7 @@ from PIL import Image
 
 import clipia_core as core
 from clipia.config import cargar_config, guardar_config
+from clipia.encoder import descripcion_encoder, detectar_encoder
 from clipia.logs import configurar_logging
 
 log = logging.getLogger("clipia.gui")
@@ -117,6 +118,63 @@ class DialogoClipManual(ctk.CTkToplevel):
                 "y no pasar de la duración del video.")
             return
         self._al_agregar(inicio, fin)
+        self.destroy()
+
+
+class DialogoAjustes(ctk.CTkToplevel):
+    """Ventana de ajustes (codificador, modelo de voz, idioma)."""
+
+    OPCIONES_ENCODER = [
+        ("Automático (recomendado)", "auto"),
+        ("NVENC — GPU NVIDIA", "h264_nvenc"),
+        ("Quick Sync — GPU Intel", "h264_qsv"),
+        ("AMF — GPU AMD", "h264_amf"),
+        ("libx264 — CPU", "libx264"),
+    ]
+
+    def __init__(self, padre, config: dict, al_guardar) -> None:
+        super().__init__(padre)
+        self.title("Ajustes")
+        self.geometry("400x260")
+        self.resizable(False, False)
+        self.configure(fg_color=PANEL)
+        self.transient(padre)
+        self.grab_set()
+        self._al_guardar = al_guardar
+
+        ctk.CTkLabel(self, text="Ajustes",
+                     font=ctk.CTkFont(size=16, weight="bold"),
+                     text_color=TEXTO).pack(pady=(16, 4))
+
+        ctk.CTkLabel(self, text="Codificador de video",
+                     font=ctk.CTkFont(size=12), text_color=SILENCIO,
+                     anchor="w").pack(fill="x", padx=24, pady=(12, 4))
+        actual = config.get("encoder", "auto")
+        texto_actual = next((t for t, v in self.OPCIONES_ENCODER
+                             if v == actual), self.OPCIONES_ENCODER[0][0])
+        self.variable_encoder = tk.StringVar(value=texto_actual)
+        ctk.CTkOptionMenu(
+            self, values=[t for t, _v in self.OPCIONES_ENCODER],
+            variable=self.variable_encoder, width=320,
+        ).pack(padx=24)
+        ctk.CTkLabel(
+            self,
+            text="«Automático» prueba el hardware de tu PC y usa la CPU\n"
+                 "si no hay codificador compatible. Si el elegido falla,\n"
+                 "la app siempre vuelve a la CPU.",
+            font=ctk.CTkFont(size=11), text_color=SILENCIO,
+            justify="left").pack(padx=24, pady=(8, 4), anchor="w")
+
+        ctk.CTkButton(
+            self, text="Guardar", fg_color=AZUL, hover_color=AZUL_HOVER,
+            command=self._guardar,
+        ).pack(pady=(16, 8))
+
+    def _guardar(self) -> None:
+        elegido = self.variable_encoder.get()
+        valor = next((v for t, v in self.OPCIONES_ENCODER
+                      if t == elegido), "auto")
+        self._al_guardar({"encoder": valor})
         self.destroy()
 
 
@@ -230,6 +288,10 @@ class AppClipIA(ctk.CTk):
         self._construir_cuerpo()
         self._construir_pie()
         self._ir_paso(0)
+        # La detección del codificador tarda ~1 s por prueba: se hace en
+        # un hilo para no retrasar el arranque.
+        threading.Thread(target=self._detectar_encoder_inicio,
+                         daemon=True).start()
 
     # -- Construcción de la interfaz -------------------------------------
 
@@ -331,6 +393,13 @@ class AppClipIA(ctk.CTk):
             checkbox_width=18, checkbox_height=18)
         self.check_rostros.pack(anchor="w", padx=16, pady=(12, 4))
 
+        self.boton_ajustes = ctk.CTkButton(
+            izquierda, text="⚙ Ajustes", fg_color=TARJETA,
+            hover_color=BORDE, text_color=TEXTO, height=30,
+            command=self._abrir_ajustes,
+        )
+        self.boton_ajustes.pack(anchor="w", padx=16, pady=(8, 4))
+
         # --- Columna derecha: lista de clips ---
         derecha = ctk.CTkFrame(cuerpo, fg_color=PANEL, corner_radius=12)
         derecha.pack(side="left", fill="both", expand=True)
@@ -370,26 +439,30 @@ class AppClipIA(ctk.CTk):
         self.etiqueta_vacia.pack(pady=60)
 
     def _construir_pie(self) -> None:
-        pie = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=0, height=76)
+        pie = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=0, height=96)
         pie.pack(fill="x")
         pie.pack_propagate(False)
 
+        izquierda_pie = ctk.CTkFrame(pie, fg_color="transparent")
+        izquierda_pie.pack(side="left", padx=20, pady=10, anchor="nw")
         self.etiqueta_estado = ctk.CTkLabel(
-            pie, text="Listo.", font=ctk.CTkFont(size=12),
+            izquierda_pie, text="Listo.", font=ctk.CTkFont(size=12),
             text_color=SILENCIO, anchor="w")
-        self.etiqueta_estado.pack(side="left", padx=20, pady=(10, 0),
-                                  anchor="nw")
+        self.etiqueta_estado.pack(anchor="w")
         self.barra_progreso = ctk.CTkProgressBar(
-            pie, width=420, height=12, progress_color=ROJO)
-        self.barra_progreso.pack(side="left", padx=20, pady=(32, 0),
-                                 anchor="nw")
+            izquierda_pie, width=420, height=12, progress_color=ROJO)
+        self.barra_progreso.pack(anchor="w", pady=(6, 0))
         self.barra_progreso.set(0)
+        self.etiqueta_encoder = ctk.CTkLabel(
+            izquierda_pie, text="Codificador: detectando…",
+            font=ctk.CTkFont(size=11), text_color=SILENCIO, anchor="w")
+        self.etiqueta_encoder.pack(anchor="w", pady=(4, 0))
 
         self.boton_exportar = ctk.CTkButton(
             pie, text="Descargar clips", fg_color=ROJO, hover_color=ROJO_HOVER,
             height=44, width=200, font=ctk.CTkFont(size=15, weight="bold"),
             command=self._exportar)
-        self.boton_exportar.pack(side="right", padx=20, pady=16)
+        self.boton_exportar.pack(side="right", padx=20, pady=26)
 
     # -- Utilidades de interfaz ------------------------------------------
 
@@ -437,10 +510,31 @@ class AppClipIA(ctk.CTk):
         self.boton_crear_clip.configure(state=estado)
         self.boton_examinar.configure(state=estado)
         self.boton_carpeta.configure(state=estado)
+        self.boton_ajustes.configure(state=estado)
         self.check_rostros.configure(state=estado)
         self.entrada_archivo.configure(state=estado)
         self.entrada_url.configure(state=estado)
         self.entrada_salida.configure(state=estado)
+
+    def _detectar_encoder_inicio(self) -> None:
+        """Detecta el codificador en segundo plano y actualiza la etiqueta."""
+        encoder = detectar_encoder(self.config.get("encoder", "auto"))
+        self._ui(self.etiqueta_encoder.configure,
+                 text="Codificador: %s" % descripcion_encoder(encoder))
+
+    def _abrir_ajustes(self) -> None:
+        if self.ocupado:
+            return
+        DialogoAjustes(self, self.config, self._al_guardar_ajustes)
+
+    def _al_guardar_ajustes(self, valores: dict) -> None:
+        self.config.update(valores)
+        try:
+            guardar_config(self.config)
+        except OSError:
+            log.warning("no se pudo guardar la configuración", exc_info=True)
+        threading.Thread(target=self._detectar_encoder_inicio,
+                         daemon=True).start()
 
     def _al_cerrar(self) -> None:
         """Limpia las miniaturas temporales y cierra la ventana (B10)."""
@@ -686,6 +780,7 @@ class AppClipIA(ctk.CTk):
     def _hilo_vista_previa(self, clip: dict, ruta_video: str,
                            seguir_rostros: bool) -> None:
         try:
+            encoder = detectar_encoder(self.config.get("encoder", "auto"))
             rostros = None
             if seguir_rostros:
                 rostros = _detectar_con_limite(
@@ -698,7 +793,8 @@ class AppClipIA(ctk.CTk):
             core.generar_vista_previa(
                 ruta_video, clip["start"], clip["end"], ruta, rostros=rostros,
                 progreso=lambda p: self._ui(self._estado,
-                                            "Generando vista previa…", p))
+                                            "Generando vista previa…", p),
+                encoder=encoder)
             self._ui(self._abrir_archivo, ruta)
             self._ui(self._estado, "Vista previa lista.", 1.0)
         except Exception as error:  # noqa: BLE001 - mostrar cualquier error
@@ -743,6 +839,7 @@ class AppClipIA(ctk.CTk):
             os.makedirs(self.carpeta_salida, exist_ok=True)
             base = os.path.splitext(os.path.basename(ruta_video))[0]
             total = len(elegidos)
+            encoder = detectar_encoder(self.config.get("encoder", "auto"))
             for i, clip in enumerate(elegidos, start=1):
                 nombre = "%s_clip%02d_%s-%s.mp4" % (
                     base, i, core.formato_hora(clip["start"]).replace(":", ""),
@@ -777,7 +874,8 @@ class AppClipIA(ctk.CTk):
 
                     core.exportar_clip(ruta_video, clip["start"], clip["end"],
                                        ruta_ass, ruta_salida,
-                                       progreso=progreso, rostros=rostros)
+                                       progreso=progreso, rostros=rostros,
+                                       encoder=encoder)
                 finally:
                     if os.path.exists(ruta_ass):
                         os.remove(ruta_ass)

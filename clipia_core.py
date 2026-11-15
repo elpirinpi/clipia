@@ -7,6 +7,11 @@ todo para no romper main.py, test_pipeline.py ni los tests existentes.
 import subprocess  # noqa: F401  (lo usan los tests: core.subprocess)
 
 from clipia.descarga import descargar_youtube
+from clipia.encoder import (
+                                descripcion_encoder,
+                                detectar_encoder,
+                                opciones_encoder,
+)
 from clipia.exportacion import (
                                 exportar_clip,
                                 generar_miniatura,
@@ -49,6 +54,8 @@ __all__ = [
     "_puntuar_ventana",
     "_traslapan",
     "descargar_youtube",
+    "descripcion_encoder",
+    "detectar_encoder",
     "detectar_momentos",
     "detectar_rostros",
     "exportar_clip",
@@ -58,5 +65,6 @@ __all__ = [
     "generar_subtitulos_ass",
     "generar_vista_previa",
     "obtener_duracion",
+    "opciones_encoder",
     "transcribir",
 ]

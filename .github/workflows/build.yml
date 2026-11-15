@@ -67,7 +67,7 @@ jobs:
         run: choco install innosetup -y
 
       - name: Compilar instalador
-        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" instalador\clipia.iss'
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" instalador\clipia.iss'
 
       - name: Tamaño del instalador
         shell: pwsh

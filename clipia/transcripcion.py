@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 # funciona igual sin ellos, el aviso solo confunde.
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
+from .cache import clave_archivo, escribir_cache, leer_cache
 from .utilidades import obtener_duracion
 
 # Modelos Whisper disponibles: tamaño de descarga y RAM aproximada que
@@ -209,7 +210,8 @@ def _transcribir_con_modelo(whisper, audio: "np.ndarray",
 
 def transcribir(ruta_video: str, modelo: str = "base", idioma: str = "es",
                 progreso: Callable[[float], None] | None = None,
-                batch_size: int | None = None) -> list[dict]:
+                batch_size: int | None = None,
+                usar_cache: bool = True) -> list[dict]:
     """Transcribe el audio de un video.
 
     Devuelve una lista de segmentos:
@@ -220,8 +222,23 @@ def transcribir(ruta_video: str, modelo: str = "base", idioma: str = "es",
     `idioma` es un código ("es") o "auto" para autodetectar.
     `batch_size` es el tamaño de lote (16 en GPU, 8 en CPU por defecto).
     `progreso` es una función opcional que recibe un valor 0.0-1.0.
+    Con `usar_cache` se reutiliza la transcripción guardada si el video
+    no cambió (misma ruta, tamaño y fecha de modificación).
     """
     duracion = obtener_duracion(ruta_video)
+    clave = None
+    if usar_cache:
+        try:
+            clave = clave_archivo(ruta_video, version=1, modelo=modelo,
+                                  idioma=idioma)
+            guardado = leer_cache("transcripcion", clave)
+        except OSError:
+            guardado = None
+        if isinstance(guardado, dict) and isinstance(
+                guardado.get("segmentos"), list):
+            if progreso:
+                progreso(1.0)
+            return guardado["segmentos"]
     dispositivo, tipo_calculo = _elegir_dispositivo()
     batch = batch_size or (16 if dispositivo == "cuda" else 8)
     # "auto" (o None) deja que Whisper detecte el idioma del audio.
@@ -249,6 +266,8 @@ def transcribir(ruta_video: str, modelo: str = "base", idioma: str = "es",
                     whisper_cpu, audio, idioma_param, 8, duracion, progreso)
             else:
                 raise
+    if clave is not None:
+        escribir_cache("transcripcion", clave, {"segmentos": resultado})
     if progreso:
         progreso(1.0)
     return resultado

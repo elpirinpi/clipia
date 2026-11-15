@@ -6,6 +6,12 @@ todo para no romper main.py, test_pipeline.py ni los tests existentes.
 """
 import subprocess  # noqa: F401  (lo usan los tests: core.subprocess)
 
+from clipia.cache import (
+                                carpeta_cache,
+                                clave_archivo,
+                                escribir_cache,
+                                leer_cache,
+)
 from clipia.descarga import descargar_youtube
 from clipia.encoder import (
                                 descripcion_encoder,
@@ -60,17 +66,21 @@ __all__ = [
     "_leer_wav_numpy",
     "_puntuar_ventana",
     "_traslapan",
+    "carpeta_cache",
+    "clave_archivo",
     "descargar_youtube",
     "descripcion_encoder",
     "detectar_encoder",
     "detectar_momentos",
     "detectar_rostros",
+    "escribir_cache",
     "exportar_clip",
     "formato_ass",
     "formato_hora",
     "generar_miniatura",
     "generar_subtitulos_ass",
     "generar_vista_previa",
+    "leer_cache",
     "liberar_modelos",
     "obtener_duracion",
     "obtener_modelo",

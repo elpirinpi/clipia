@@ -152,8 +152,8 @@ def test_transcribir_tambien_funciona_desde_la_fachada(tmp_path, monkeypatch):
                     reason="solo local: necesita el video de prueba")
 def test_transcribir_real_batched_con_palabras():
     """Prueba real (lenta): el pipeline batched transcribe voz española
-    con timestamps por palabra."""
-    resultado = tr.transcribir(VIDEO_CON_VOZ)
+    con timestamps por palabra (sin caché, para probar el modelo)."""
+    resultado = tr.transcribir(VIDEO_CON_VOZ, usar_cache=False)
     assert len(resultado) > 0
     palabras = [p for s in resultado for p in s["words"]]
     assert len(palabras) > 100

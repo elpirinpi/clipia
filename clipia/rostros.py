@@ -10,10 +10,13 @@ import subprocess
 import tempfile
 from collections.abc import Callable
 
+from .cache import clave_archivo, escribir_cache, leer_cache
+
 
 def detectar_rostros(ruta_video: str, inicio: float, fin: float,
                      intervalo: float = 2.0,
-                     progreso: Callable[[float], None] | None = None
+                     progreso: Callable[[float], None] | None = None,
+                     usar_cache: bool = True
                      ) -> list[tuple[float, float]]:
     """Detecta la posición horizontal de la cara principal en un fragmento.
 
@@ -25,22 +28,41 @@ def detectar_rostros(ruta_video: str, inicio: float, fin: float,
     la cara como fracción del ancho (0.0-1.0). Devuelve [] si no se
     encuentra ninguna cara, si OpenCV no está instalado o si algo
     falla. `progreso` es una función opcional que recibe un valor
-    0.0-1.0. Solo mide dónde está la cara en cada momento; no identifica
-    a nadie.
+    0.0-1.0. Con `usar_cache` se reutiliza la detección guardada si el
+    video no cambió (así la vista previa y la exportación del mismo
+    clip no detectan dos veces). Solo mide dónde está la cara en cada
+    momento; no identifica a nadie.
     """
+    duracion = max(0.1, fin - inicio)
+    # Como mucho 45 muestras por clip, aunque el clip sea largo.
+    intervalo = max(intervalo, duracion / 45)
+    clave = None
+    if usar_cache:
+        try:
+            clave = clave_archivo(ruta_video, version=1,
+                                  inicio=round(inicio, 3),
+                                  fin=round(fin, 3),
+                                  intervalo=round(intervalo, 3))
+            guardado = leer_cache("rostros", clave)
+        except OSError:
+            guardado = None
+        if isinstance(guardado, dict) and isinstance(
+                guardado.get("muestras"), list):
+            if progreso:
+                progreso(1.0)
+            return [(float(t), float(x))
+                    for t, x in guardado["muestras"]]
     try:
         import cv2
     except ImportError:
         return []
     muestras = []
+    error = False
     try:
         cascada = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
         if cascada.empty():
             return []
-        duracion = max(0.1, fin - inicio)
-        # Como mucho 45 muestras por clip, aunque el clip sea largo.
-        intervalo = max(intervalo, duracion / 45)
         tmp = tempfile.mkdtemp(prefix="clipia_rostros_")
         try:
             # Un fotograma cada `intervalo` segundos, reducido a 640 px.
@@ -72,7 +94,7 @@ def detectar_rostros(ruta_video: str, inicio: float, fin: float,
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
     except Exception:
-        pass
+        error = True
     # Suavizar: media móvil de 3 para que el recorte no salte de lado a lado
     if len(muestras) >= 3:
         suavizadas = []
@@ -80,8 +102,12 @@ def detectar_rostros(ruta_video: str, inicio: float, fin: float,
             vecinos = [muestras[j][1] for j in range(
                 max(0, i - 1), min(len(muestras), i + 2))]
             suavizadas.append((t, sum(vecinos) / len(vecinos)))
-        return suavizadas
-    return muestras
+        resultado = suavizadas
+    else:
+        resultado = muestras
+    if clave is not None and not error:
+        escribir_cache("rostros", clave, {"muestras": resultado})
+    return resultado
 
 
 def _expresion_rostros(muestras: list[tuple[float, float]],

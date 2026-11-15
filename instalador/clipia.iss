@@ -10,7 +10,7 @@
 ; %APPDATA% y %LOCALAPPDATA% se conservan, como hacen la mayoría de
 ; apps, para no borrar el modelo de voz descargado).
 
-#define AppVersion "2.0.1"
+#define AppVersion "2.0.2"
 
 [Setup]
 AppId={{6E4C0D58-E034-4BD7-B6B8-CFF9E2A8B1C6}

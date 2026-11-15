@@ -28,6 +28,12 @@ a = Analysis(
         # Certificados TLS (los usa huggingface_hub al descargar el
         # modelo de voz).
         *collect_data_files("certifi"),
+        # Modelo ONNX de detección de voz (VAD) de faster-whisper
+        # (assets/silero_vad_v6.onnx): sin él, toda transcripción
+        # desde la app instalada falla con ONNXRuntimeError
+        # NO_SUCHFILE (en desarrollo funciona porque el archivo está
+        # en site-packages).
+        *collect_data_files("faster_whisper"),
     ],
     hiddenimports=[
         # yt-dlp carga sus extractores de forma dinámica: sin esto

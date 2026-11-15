@@ -37,6 +37,9 @@ def test_spec_es_python_valido_y_one_folder():
     assert 'collect_submodules("yt_dlp")' in fuente
     assert 'collect_data_files("tkinterdnd2")' in fuente
     assert 'collect_data_files("certifi")' in fuente
+    # Sin los datos de faster-whisper falta silero_vad_v6.onnx y toda
+    # transcripción desde la app instalada falla (v2.0.2).
+    assert 'collect_data_files("faster_whisper")' in fuente
     assert "upx=False" in fuente
 
 
@@ -47,7 +50,7 @@ def test_iss_tiene_secciones_y_version():
     for seccion in ("[Setup]", "[Files]", "[Icons]", "[Run]",
                     "[Languages]"):
         assert seccion in contenido
-    assert '#define AppVersion "2.0.1"' in contenido
+    assert '#define AppVersion "2.0.2"' in contenido
     assert "OutputBaseFilename=KellyAiClip-Setup-{#AppVersion}" in contenido
     assert 'Source: "..\\dist\\KellyAiClip\\*"' in contenido
     assert "PrivilegesRequired=lowest" in contenido
@@ -103,9 +106,9 @@ def test_gitignore_no_ignora_el_spec_pero_si_las_salidas():
 # --- Versión coherente -----------------------------------------------------
 
 def test_version_coherente_en_paquete_iss_y_workflow():
-    assert __version__ == "2.0.1"
-    assert '"2.0.1"' in _leer("instalador/clipia.iss")
-    assert "KellyAiClip-Setup-2.0.1" in _leer(".github/workflows/build.yml")
+    assert __version__ == "2.0.2"
+    assert '"2.0.2"' in _leer("instalador/clipia.iss")
+    assert "KellyAiClip-Setup-2.0.2" in _leer(".github/workflows/build.yml")
 
 
 def test_flag_version_imprime_y_sale_sin_ventana():
@@ -115,7 +118,7 @@ def test_flag_version_imprime_y_sale_sin_ventana():
         [sys.executable, os.path.join(RAIZ, "main.py"), "--version"],
         capture_output=True, text=True, timeout=120)
     assert resultado.returncode == 0
-    assert resultado.stdout.strip() == "KellyAiClip 2.0.1"
+    assert resultado.stdout.strip() == "KellyAiClip 2.0.2"
 
 
 # --- PATH del instalador ---------------------------------------------------

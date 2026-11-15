@@ -119,7 +119,7 @@ app sigue con la heurística; nunca se queda esperando.
 
 ## Instalación (recomendado: instalador)
 
-1. Descarga **`KellyAiClip-Setup-2.0.1.exe`** desde la página de
+1. Descarga **`KellyAiClip-Setup-2.0.2.exe`** desde la página de
    releases del repositorio
    (https://github.com/elpirinpi/clipia/releases).
 2. Haz doble clic y sigue el asistente. Se instala por usuario (sin

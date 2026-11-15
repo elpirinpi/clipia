@@ -3,6 +3,21 @@
 Todos los cambios importantes de cada versión. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.0.2] - 15-11-2026
+
+- **Corregido el fallo de transcripción en la app instalada**: al
+  analizar un video salía `ONNXRuntimeError NO_SUCHFILE` porque el
+  instalador no incluía el modelo de detección de voz de
+  faster-whisper (`assets/silero_vad_v6.onnx`). El spec de
+  PyInstaller ahora recoge los datos de `faster_whisper` y el
+  workflow de build verifica que ese archivo quedó empaquetado
+  (si falta, el build falla en vez de publicar un instalador
+  roto).
+- **Respaldo sin detección de voz**: si el filtro VAD falla por
+  cualquier motivo, la transcripción reintenta una vez sin él y
+  sigue adelante (queda registrado en el log); el resultado es el
+  mismo, solo sin ignorar los silencios largos.
+
 ## [2.0.1] - 15-11-2026
 
 - **Corregida la columna izquierda invisible en la app instalada**:

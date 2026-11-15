@@ -293,23 +293,36 @@ def _leer_wav_numpy(ruta_wav: str) -> "np.ndarray":
     return np.frombuffer(datos, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-def _transcribir_con_modelo(whisper, audio: "np.ndarray",
-                            idioma_param: str | None, batch_size: int,
-                            duracion: float,
-                            progreso: Callable[[float], None] | None
-                            ) -> list[dict]:
-    """Transcribe con un modelo ya cargado, en lotes (batched)."""
-    from faster_whisper import BatchedInferencePipeline
+def _es_error_vad(error: Exception) -> bool:
+    """True si el error parece de la detección de voz (VAD): falta el
+    modelo silero_vad_v6.onnx en el paquete instalado (ONNXRuntimeError
+    NO_SUCHFILE) o el VAD falló por otro motivo. Sirve para decidir
+    si vale la pena reintentar sin VAD."""
+    if type(error).__name__ == "ONNXRuntimeError":
+        return True
+    texto = str(error).lower()
+    return "silero" in texto or "vad" in texto or "onnx" in texto
 
-    pipeline = BatchedInferencePipeline(whisper)
-    segmentos, _info = pipeline.transcribe(
-        audio,
-        language=idioma_param,
-        word_timestamps=True,
-        vad_filter=True,          # ignora silencios largos
-        vad_parameters={"min_silence_duration_ms": 500},
-        batch_size=batch_size,
-    )
+
+def _transcribir_intento(pipeline, audio: "np.ndarray",
+                         idioma_param: str | None, batch_size: int,
+                         duracion: float,
+                         progreso: Callable[[float], None] | None,
+                         usar_vad: bool) -> list[dict]:
+    """Un intento de transcripción (con o sin filtro VAD). La llamada
+    y el consumo de los segmentos van juntos: el error del VAD puede
+    saltar al llamar a transcribe() o al iterar los segmentos."""
+    parametros = {
+        "language": idioma_param,
+        "word_timestamps": True,
+        "batch_size": batch_size,
+    }
+    if usar_vad:
+        parametros["vad_filter"] = True
+        parametros["vad_parameters"] = {"min_silence_duration_ms": 500}
+    else:
+        parametros["vad_filter"] = False
+    segmentos, _info = pipeline.transcribe(audio, **parametros)
     resultado = []
     for seg in segmentos:
         palabras = []
@@ -328,6 +341,36 @@ def _transcribir_con_modelo(whisper, audio: "np.ndarray",
         if progreso and duracion > 0:
             progreso(min(1.0, float(seg.end) / duracion))
     return resultado
+
+
+def _transcribir_con_modelo(whisper, audio: "np.ndarray",
+                            idioma_param: str | None, batch_size: int,
+                            duracion: float,
+                            progreso: Callable[[float], None] | None
+                            ) -> list[dict]:
+    """Transcribe con un modelo ya cargado, en lotes (batched).
+
+    Si la detección de voz falla (p. ej. falta silero_vad_v6.onnx
+    en el paquete instalado), reintenta UNA vez sin VAD: la
+    transcripción sale igual, solo sin ignorar los silencios. Si el
+    reintento también falla, el error sube como antes.
+    """
+    from faster_whisper import BatchedInferencePipeline
+
+    pipeline = BatchedInferencePipeline(whisper)
+    try:
+        return _transcribir_intento(pipeline, audio, idioma_param,
+                                    batch_size, duracion, progreso,
+                                    usar_vad=True)
+    except Exception as error:  # noqa: BLE001 - decidir si reintentar
+        if not _es_error_vad(error):
+            raise
+        log.warning(
+            "la detección de voz (VAD) falló (%s); se transcribe sin "
+            "ella", error)
+        return _transcribir_intento(pipeline, audio, idioma_param,
+                                    batch_size, duracion, progreso,
+                                    usar_vad=False)
 
 
 def transcribir(ruta_video: str, modelo: str = "base", idioma: str = "es",

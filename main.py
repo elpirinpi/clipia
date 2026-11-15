@@ -154,6 +154,13 @@ class DialogoAjustes(ctk.CTkToplevel):
         ("3 clips a la vez", 3),
     ]
 
+    OPCIONES_LOTE = [
+        ("Automático", 0),
+        ("4", 4),
+        ("8", 8),
+        ("16", 16),
+    ]
+
     def __init__(self, padre, config: dict, al_guardar) -> None:
         super().__init__(padre)
         self.title("Ajustes")
@@ -164,12 +171,19 @@ class DialogoAjustes(ctk.CTkToplevel):
         self.grab_set()
         self._al_guardar = al_guardar
         self._ram_total = ram_total_gb()
+        # Contenido con desplazamiento: con 8 secciones el diálogo
+        # no cabe en pantallas bajas; el botón Guardar queda fijo
+        # abajo, fuera del área con desplazamiento.
+        contenido = ctk.CTkScrollableFrame(
+            self, fg_color="transparent",
+            scrollbar_button_color=BORDE)
+        contenido.pack(fill="both", expand=True)
 
-        ctk.CTkLabel(self, text="Ajustes",
+        ctk.CTkLabel(contenido, text="Ajustes",
                      font=ctk.CTkFont(size=16, weight="bold"),
                      text_color=TEXTO).pack(pady=(16, 4))
 
-        ctk.CTkLabel(self, text="Codificador de video",
+        ctk.CTkLabel(contenido, text="Codificador de video",
                      font=ctk.CTkFont(size=12), text_color=SILENCIO,
                      anchor="w").pack(fill="x", padx=24, pady=(12, 4))
         actual = config.get("encoder", "auto")
@@ -177,18 +191,18 @@ class DialogoAjustes(ctk.CTkToplevel):
                              if v == actual), self.OPCIONES_ENCODER[0][0])
         self.variable_encoder = tk.StringVar(value=texto_actual)
         ctk.CTkOptionMenu(
-            self, values=[t for t, _v in self.OPCIONES_ENCODER],
+            contenido, values=[t for t, _v in self.OPCIONES_ENCODER],
             variable=self.variable_encoder, width=320,
         ).pack(padx=24)
         ctk.CTkLabel(
-            self,
+            contenido,
             text="«Automático» prueba el hardware de tu PC y usa la CPU\n"
                  "si no hay codificador compatible. Si el elegido falla,\n"
                  "la app siempre vuelve a la CPU.",
             font=ctk.CTkFont(size=11), text_color=SILENCIO,
             justify="left").pack(padx=24, pady=(8, 4), anchor="w")
 
-        ctk.CTkLabel(self, text="Modelo de voz (transcripción)",
+        ctk.CTkLabel(contenido, text="Modelo de voz (transcripción)",
                      font=ctk.CTkFont(size=12), text_color=SILENCIO,
                      anchor="w").pack(fill="x", padx=24, pady=(12, 4))
         modelo_actual = config.get("modelo", "base")
@@ -197,18 +211,18 @@ class DialogoAjustes(ctk.CTkToplevel):
         self.variable_modelo = tk.StringVar(
             value=MODELOS_WHISPER[modelo_actual]["descripcion"])
         ctk.CTkOptionMenu(
-            self, values=[m["descripcion"]
+            contenido, values=[m["descripcion"]
                           for m in MODELOS_WHISPER.values()],
             variable=self.variable_modelo, width=320,
             command=lambda _v: self._actualizar_aviso_ram(),
         ).pack(padx=24)
         self.etiqueta_ram = ctk.CTkLabel(
-            self, text="", font=ctk.CTkFont(size=11),
+            contenido, text="", font=ctk.CTkFont(size=11),
             text_color=SILENCIO, justify="left")
         self.etiqueta_ram.pack(padx=24, pady=(8, 4), anchor="w")
         self._actualizar_aviso_ram()
 
-        ctk.CTkLabel(self, text="Idioma del audio",
+        ctk.CTkLabel(contenido, text="Idioma del audio",
                      font=ctk.CTkFont(size=12), text_color=SILENCIO,
                      anchor="w").pack(fill="x", padx=24, pady=(12, 4))
         idioma_actual = config.get("idioma", "es")
@@ -216,11 +230,11 @@ class DialogoAjustes(ctk.CTkToplevel):
                             IDIOMAS[0][1])
         self.variable_idioma = tk.StringVar(value=texto_idioma)
         ctk.CTkOptionMenu(
-            self, values=[t for _c, t in IDIOMAS],
+            contenido, values=[t for _c, t in IDIOMAS],
             variable=self.variable_idioma, width=320,
         ).pack(padx=24)
 
-        ctk.CTkLabel(self, text="Clips a exportar a la vez",
+        ctk.CTkLabel(contenido, text="Clips a exportar a la vez",
                      font=ctk.CTkFont(size=12), text_color=SILENCIO,
                      anchor="w").pack(fill="x", padx=24, pady=(12, 4))
         workers_actual = config.get("workers_exportacion", 0)
@@ -229,18 +243,18 @@ class DialogoAjustes(ctk.CTkToplevel):
                              self.OPCIONES_WORKERS[0][0])
         self.variable_workers = tk.StringVar(value=texto_workers)
         ctk.CTkOptionMenu(
-            self, values=[t for t, _v in self.OPCIONES_WORKERS],
+            contenido, values=[t for t, _v in self.OPCIONES_WORKERS],
             variable=self.variable_workers, width=320,
         ).pack(padx=24)
         ctk.CTkLabel(
-            self,
+            contenido,
             text="«Automático» usa 1 con CPU y 2 con codificador por\n"
                  "hardware. Con CPU, exportar varios a la vez no es\n"
                  "más rápido: los workers se reparten la misma CPU.",
             font=ctk.CTkFont(size=11), text_color=SILENCIO,
             justify="left").pack(padx=24, pady=(8, 4), anchor="w")
 
-        ctk.CTkLabel(self, text="Estilo de subtítulos",
+        ctk.CTkLabel(contenido, text="Estilo de subtítulos",
                      font=ctk.CTkFont(size=12), text_color=SILENCIO,
                      anchor="w").pack(fill="x", padx=24, pady=(12, 4))
         estilo_actual = config.get("estilo_subtitulos", "Shorts clásico")
@@ -248,34 +262,69 @@ class DialogoAjustes(ctk.CTkToplevel):
             estilo_actual = "Shorts clásico"
         self.variable_estilo = tk.StringVar(value=estilo_actual)
         ctk.CTkOptionMenu(
-            self, values=list(PRESETS_SUBTITULOS),
+            contenido, values=list(PRESETS_SUBTITULOS),
             variable=self.variable_estilo, width=320,
         ).pack(padx=24)
         ctk.CTkLabel(
-            self,
+            contenido,
             text="«Hormozi» y «Neón» resaltan cada palabra al hablarse\n"
                  "(karaoke); «Hormozi» además usa MAYÚSCULAS.",
             font=ctk.CTkFont(size=11), text_color=SILENCIO,
             justify="left").pack(padx=24, pady=(8, 4), anchor="w")
 
-        ctk.CTkLabel(self, text="Margen vertical de subtítulos (px)",
+        ctk.CTkLabel(contenido, text="Margen vertical de subtítulos (px)",
                      font=ctk.CTkFont(size=12), text_color=SILENCIO,
                      anchor="w").pack(fill="x", padx=24, pady=(12, 4))
-        self.entrada_margen = ctk.CTkEntry(self, width=120)
+        self.entrada_margen = ctk.CTkEntry(contenido, width=120)
         self.entrada_margen.pack(anchor="w", padx=24)
         self.entrada_margen.insert(
             0, str(config.get("margen_vertical", 300)))
         ctk.CTkLabel(
-            self,
+            contenido,
             text="Distancia desde abajo: 300 es lo habitual. Súbelo si\n"
                  "los botones de TikTok tapan los subtítulos.",
             font=ctk.CTkFont(size=11), text_color=SILENCIO,
             justify="left").pack(padx=24, pady=(8, 4), anchor="w")
 
-        ctk.CTkButton(
+        ctk.CTkLabel(contenido, text="Modelo de Ollama (IA local, opcional)",
+                     font=ctk.CTkFont(size=12), text_color=SILENCIO,
+                     anchor="w").pack(fill="x", padx=24, pady=(12, 4))
+        self.variable_ollama = tk.StringVar(
+            value=config.get("ollama_modelo", MODELO_DEFECTO))
+        ctk.CTkEntry(contenido, textvariable=self.variable_ollama,
+                     width=320).pack(padx=24)
+        ctk.CTkLabel(
+            contenido,
+            text="Se usa al pulsar «Reordenar con IA local». En blanco\n"
+                 "usa el modelo por defecto (%s)." % MODELO_DEFECTO,
+            font=ctk.CTkFont(size=11), text_color=SILENCIO,
+            justify="left").pack(padx=24, pady=(8, 4), anchor="w")
+
+        ctk.CTkLabel(contenido, text="Lote de transcripción",
+                     font=ctk.CTkFont(size=12), text_color=SILENCIO,
+                     anchor="w").pack(fill="x", padx=24, pady=(12, 4))
+        lote_actual = config.get("lote_transcripcion", 0)
+        texto_lote = next((t for t, v in self.OPCIONES_LOTE
+                           if v == lote_actual),
+                          self.OPCIONES_LOTE[0][0])
+        self.variable_lote = tk.StringVar(value=texto_lote)
+        ctk.CTkOptionMenu(
+            contenido, values=[t for t, _v in self.OPCIONES_LOTE],
+            variable=self.variable_lote, width=320,
+        ).pack(padx=24)
+        ctk.CTkLabel(
+            contenido,
+            text="Cuántas frases transcribe a la vez. «Automático»\n"
+                 "elige según tu PC (16 con GPU, 8 con CPU). Un lote\n"
+                 "mayor usa más RAM.",
+            font=ctk.CTkFont(size=11), text_color=SILENCIO,
+            justify="left").pack(padx=24, pady=(8, 4), anchor="w")
+
+        self.boton_guardar = ctk.CTkButton(
             self, text="Guardar", fg_color=AZUL, hover_color=AZUL_HOVER,
             command=self._guardar,
-        ).pack(pady=(16, 8))
+        )
+        self.boton_guardar.pack(side="bottom", pady=(8, 12))
 
     def _modelo_elegido(self) -> str:
         elegido = self.variable_modelo.get()
@@ -317,12 +366,18 @@ class DialogoAjustes(ctk.CTkToplevel):
         estilo_elegido = self.variable_estilo.get()
         if estilo_elegido not in PRESETS_SUBTITULOS:
             estilo_elegido = "Shorts clásico"
+        modelo_ollama = self.variable_ollama.get().strip() or MODELO_DEFECTO
+        lote_elegido = self.variable_lote.get()
+        valor_lote = next((v for t, v in self.OPCIONES_LOTE
+                           if t == lote_elegido), 0)
         self._al_guardar({"encoder": valor_encoder,
                           "modelo": self._modelo_elegido(),
                           "idioma": valor_idioma,
                           "workers_exportacion": valor_workers,
                           "estilo_subtitulos": estilo_elegido,
-                          "margen_vertical": valor_margen})
+                          "margen_vertical": valor_margen,
+                          "ollama_modelo": modelo_ollama,
+                          "lote_transcripcion": valor_lote})
         self.destroy()
 
 
@@ -1321,10 +1376,12 @@ class AppClipIA(ctk.CTk):
             raise FileNotFoundError("No se encontró el archivo: %s" % ruta)
         duracion = core.obtener_duracion(ruta)
         al_progreso("Transcribiendo audio con IA…", 0)
+        lote = self.config.get("lote_transcripcion", 0)
         segmentos = core.transcribir(
             ruta,
             modelo=self.config.get("modelo", "base"),
             idioma=self.config.get("idioma", "es"),
+            batch_size=lote if lote else None,
             progreso=lambda p: al_progreso(
                 "Transcribiendo audio con IA…", p))
         if not segmentos:
@@ -1575,16 +1632,16 @@ class AppClipIA(ctk.CTk):
                          INSTRUCCIONES_INSTALACION)
                 self._ui(self._estado, "Listo.", 0)
                 return
-            if not modelo_disponible():
+            modelo = self.config.get("ollama_modelo", MODELO_DEFECTO)
+            if not modelo_disponible(modelo):
                 self._ui(messagebox.showinfo, "ClipIA",
-                         INSTRUCCIONES_MODELO
-                         % (MODELO_DEFECTO, MODELO_DEFECTO))
+                         INSTRUCCIONES_MODELO % (modelo, modelo))
                 self._ui(self._estado, "Listo.", 0)
                 return
             self._ui(self._estado,
                      "Reordenando con IA local… (puede tardar 1-2 min)",
                      0)
-            reordenados = rerank_ollama(list(self.candidatos))
+            reordenados = rerank_ollama(list(self.candidatos), modelo)
             if reordenados is None:
                 self._ui(
                     self._estado,

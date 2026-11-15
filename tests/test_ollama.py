@@ -233,10 +233,10 @@ def test_gui_reordena_y_conserva_seleccion(app, monkeypatch):
     import main as app_mod
 
     monkeypatch.setattr(app_mod, "ollama_disponible", lambda: True)
-    monkeypatch.setattr(app_mod, "modelo_disponible", lambda: True)
+    monkeypatch.setattr(app_mod, "modelo_disponible", lambda modelo: True)
     invertidos = list(reversed(_candidatos()))
     monkeypatch.setattr(app_mod, "rerank_ollama",
-                        lambda c: invertidos)
+                        lambda c, modelo: invertidos)
     app.candidatos = _candidatos()
     app._mostrar_clips()
     app.update()

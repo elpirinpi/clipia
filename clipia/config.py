@@ -22,6 +22,11 @@ VALORES_DEFECTO: dict = {
     # Workers de exportación: 0 = automático (1 con libx264, 2 con
     # codificador por hardware).
     "workers_exportacion": 0,
+    # Modelo de Ollama para reordenar con IA local (opcional).
+    "ollama_modelo": "qwen2.5:7b",
+    # Lote de transcripción (BatchedInferencePipeline): 0 = automático
+    # (16 con GPU, 8 con CPU).
+    "lote_transcripcion": 0,
 }
 
 

@@ -1,7 +1,11 @@
 """Detección de los mejores momentos para clips cortos (30-90 s)."""
+import math
 import re
 
 # Palabras que suelen marcar un momento con gancho en español.
+# Fase 2: fuera las genéricas ("te", "voy", "pasa", "paso", "todos",
+# "ahora", "nuevo") — aparecían en casi cualquier ventana y no
+# distinguían nada — y los duplicados del literal original.
 PALABRAS_GANCHO: set[str] = {
     "mira", "miran", "escucha", "escuchen", "atención", "atencion", "ojo",
     "importante", "secreto", "secretos", "gratis", "nadie", "nunca",
@@ -9,10 +13,10 @@ PALABRAS_GANCHO: set[str] = {
     "peor", "dinero", "ganar", "gana", "error", "errores", "truco",
     "trucos", "clave", "claves", "descubre", "descubrí", "descubri",
     "imagina", "imagínate", "imaginate", "recuerda", "sabes", "créeme",
-    "creeme", "te", "voy", "contar", "pasa", "resulta", "fíjate", "fijate",
-    "alerta", "urgente", "exclusivo", "nuevo", "primero", "último",
-    "ultimo", "ahora", "sucedió", "sucedio", "pasó", "paso",
-    "misterio", "revelo", "reveló", "confieso", "todos",
+    "creeme", "contar", "resulta", "fíjate", "fijate",
+    "alerta", "urgente", "exclusivo", "primero", "último",
+    "ultimo", "sucedió", "sucedio", "pasó",
+    "misterio", "revelo", "reveló", "confieso",
     "ninguno", "jamás", "jamas", "imposible", "locura", "brutal",
 }
 
@@ -54,10 +58,31 @@ def _frases_de_segmentos(segmentos: list[dict]) -> list[dict]:
     } for f in frases if "".join(p["word"] for p in f).strip()]
 
 
-def _puntuar_ventana(frases: list[dict], inicio: float, fin: float) -> float:
+def _idf_ganchos(frases: list[dict]) -> dict[str, float]:
+    """Rareza (idf) de cada palabra gancho sobre las frases del video.
+
+    idf(t) = ln((N+1)/(df+1)) + 1, con N = número de frases y df =
+    frases que contienen t. Una palabra en casi todas las frases vale
+    ~1; una que aparece una sola vez vale ~ln(N)+1. Así "dinero" en un
+    video sobre dinero pesa menos que "secreto" dicho una sola vez.
+    """
+    total = len(frases)
+    df: dict[str, int] = {}
+    for frase in frases:
+        tokens = set(re.findall(r"[a-záéíóúñü]+", frase["text"].lower()))
+        for token in tokens & PALABRAS_GANCHO:
+            df[token] = df.get(token, 0) + 1
+    return {t: math.log((total + 1) / (n + 1)) + 1.0
+            for t, n in df.items()}
+
+
+def _puntuar_ventana(frases: list[dict], inicio: float, fin: float,
+                     idf: dict[str, float] | None = None) -> float:
     """Puntúa una ventana [inicio, fin] de 0 a 1.
 
     Combina densidad de habla, exclamaciones/preguntas y palabras gancho.
+    Con `idf` (ver _idf_ganchos) las palabras gancho raras pesan más
+    que las comunes; sin `idf` cada gancho vale lo mismo que antes.
     """
     en_ventana = [f for f in frases if f["start"] >= inicio - 0.5
                   and f["start"] < fin]
@@ -72,10 +97,16 @@ def _puntuar_ventana(frases: list[dict], inicio: float, fin: float) -> float:
     # Exclamaciones y preguntas.
     signos = texto.count("!") + texto.count("?")
     signos_puntos = min(1.0, signos / 3.0)
-    # Palabras gancho.
+    # Palabras gancho (con rareza si se pasa el idf: 4 ganchos muy
+    # raros ~1.0; 4 ganchos comunes ~0.4).
     tokens = re.findall(r"[a-záéíóúñü]+", texto.lower())
-    ganchos = sum(1 for t in tokens if t in PALABRAS_GANCHO)
-    gancho_puntos = min(1.0, ganchos / 4.0)
+    if idf is None:
+        ganchos = sum(1 for t in tokens if t in PALABRAS_GANCHO)
+        gancho_puntos = min(1.0, ganchos / 4.0)
+    else:
+        peso = sum(idf.get(t, 1.0) for t in tokens
+                   if t in PALABRAS_GANCHO)
+        gancho_puntos = min(1.0, peso / 12.0)
 
     return 0.45 * densidad + 0.30 * gancho_puntos + 0.25 * signos_puntos
 
@@ -139,6 +170,7 @@ def detectar_momentos(segmentos: list[dict], duracion_video: float,
 
     candidatos = []
     vistos = set()
+    idf = _idf_ganchos(frases)
     for frase in frases:
         # El inicio ya es frontera de frase (empieza en una frase); el
         # fin se ajusta a la frontera de frase más cercana para no
@@ -152,7 +184,7 @@ def detectar_momentos(segmentos: list[dict], duracion_video: float,
             if clave in vistos:
                 continue
             vistos.add(clave)
-            puntos = _puntuar_ventana(frases, inicio, fin)
+            puntos = _puntuar_ventana(frases, inicio, fin, idf=idf)
             if puntos <= 0:
                 continue
             texto = " ".join(f["text"] for f in frases

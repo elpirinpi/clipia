@@ -24,6 +24,21 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 from PIL import Image
 
+# Arrastrar y soltar (tkinterdnd2, Fase 3): la API oficial `require()`
+# activa tkdnd en una ventana CustomTkinter (probado en el prototipo
+# R3: tkdnd 2.10.3 carga limpio). Si la librería falta, la app sigue
+# funcionando sin DnD (el import es opcional a propósito).
+try:
+    from tkinterdnd2 import DND_FILES, DND_TEXT
+    from tkinterdnd2.TkinterDnD import DnDWrapper
+    from tkinterdnd2.TkinterDnD import require as dnd_require
+    _DND_DISPONIBLE = True
+except ImportError:
+    DND_FILES = DND_TEXT = None
+    DnDWrapper = object
+    dnd_require = None
+    _DND_DISPONIBLE = False
+
 import clipia_core as core
 from clipia import editor, proyecto
 from clipia.cola import ColaExportacion, TrabajoExportacion, workers_efectivos
@@ -729,8 +744,13 @@ def _claves_seleccion(clips: list[dict]) -> list:
     return claves
 
 
-class AppClipIA(ctk.CTk):
-    """Ventana principal de ClipIA."""
+class AppClipIA(DnDWrapper, ctk.CTk):
+    """Ventana principal de ClipIA.
+
+    El mixin DnDWrapper añade drop_target_register/dnd_bind para el
+    arrastrar y soltar; sin tkinterdnd2 es `object` y el DnD queda
+    desactivado (ver _activar_dnd).
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -781,10 +801,70 @@ class AppClipIA(ctk.CTk):
         self._construir_cuerpo()
         self._construir_pie()
         self._ir_paso(0)
+        self._activar_dnd()
         # La detección del codificador tarda ~1 s por prueba: se hace en
         # un hilo para no retrasar el arranque.
         threading.Thread(target=self._detectar_encoder_inicio,
                          daemon=True).start()
+
+    def _activar_dnd(self) -> None:
+        """Activa el arrastrar y soltar en la ventana (si está
+        tkinterdnd2). Un fallo aquí no tumba la app: el DnD queda
+        desactivado y se registra en el log."""
+        self._dnd_activo = False
+        if not _DND_DISPONIBLE:
+            return
+        try:
+            dnd_require(self)
+            self.drop_target_register(DND_FILES, DND_TEXT)
+            self.dnd_bind("<<Drop>>", self._al_soltar)
+            self.dnd_bind("<<DropEnter>>", self._al_entrar_arrastre)
+            self.dnd_bind("<<DropLeave>>", self._al_salir_arrastre)
+            self._dnd_activo = True
+        except Exception:
+            log.warning("arrastrar y soltar no disponible", exc_info=True)
+
+    def _al_entrar_arrastre(self, _evento) -> None:
+        if not self.ocupado:
+            self._estado("Suelta los archivos para añadirlos.", None)
+
+    def _al_salir_arrastre(self, _evento) -> None:
+        if not self.ocupado:
+            self._estado("Listo.", 0)
+
+    def _al_soltar(self, evento) -> None:
+        """Archivos soltados sobre la ventana: un video va al campo
+        de archivo; varios, a la cola multi-video. Un texto soltado
+        que sea una URL va al campo de URL."""
+        if self.ocupado:
+            return
+        try:
+            datos = self.tk.splitlist(evento.data)
+        except tk.TclError:
+            datos = [evento.data]
+        archivos = [d for d in datos if os.path.isfile(d)]
+        if archivos:
+            videos = [a for a in archivos
+                      if a.lower().endswith((".mp4", ".mkv", ".mov",
+                                             ".webm", ".avi"))]
+            if not videos:
+                messagebox.showinfo(
+                    "ClipIA", "Los archivos soltados no son videos.")
+                return
+            if len(videos) == 1 and not self.cola_videos:
+                self.entrada_archivo.delete(0, "end")
+                self.entrada_archivo.insert(0, videos[0])
+                self.entrada_url.delete(0, "end")
+            else:
+                self._agregar_a_cola(videos)
+            self._estado("Listo.", 0)
+            return
+        texto = (evento.data or "").strip()
+        if texto.startswith(("http://", "https://")):
+            self.entrada_url.delete(0, "end")
+            self.entrada_url.insert(0, texto)
+            self.entrada_archivo.delete(0, "end")
+            self._estado("Listo.", 0)
 
     # -- Construcción de la interfaz -------------------------------------
 
@@ -1186,6 +1266,10 @@ class AppClipIA(ctk.CTk):
             title="Añadir videos a la cola",
             filetypes=[("Videos", "*.mp4 *.mkv *.mov *.webm *.avi"),
                        ("Todos los archivos", "*.*")])
+        self._agregar_a_cola(rutas)
+
+    def _agregar_a_cola(self, rutas) -> None:
+        """Añade rutas a la cola multi-video (sin duplicados)."""
         en_cola = {v["ruta"] for v in self.cola_videos}
         for ruta in rutas:
             if ruta and ruta not in en_cola:

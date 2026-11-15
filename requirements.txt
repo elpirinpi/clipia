@@ -8,3 +8,7 @@ Pillow==13.0.0
 # llegaban como transitivas y un cambio de faster-whisper podia romperlos.
 numpy==2.5.4
 ctranslate2==4.9.0
+# Fase 3: arrastrar y soltar (tkdnd). Wheel universal con los binarios
+# de tkdnd incluidos (win-x64 entre ellos), 819 KB. El import en main.py
+# es opcional: sin esta librería la app funciona sin DnD.
+tkinterdnd2==0.7.0

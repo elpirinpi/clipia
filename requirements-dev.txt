@@ -2,3 +2,4 @@
 # Pruebas y lint. Versiones probadas el 13-11-2026.
 pytest==9.2.0
 ruff==0.17.5
+PyYAML==6.0.3  # test_repo.py valida el YAML del workflow de CI

@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# ClipIA
+salida/
+diagnostico.log
+*.log
+
+# Builds (Fase 4: PyInstaller + instalador)
+dist/
+build/
+*.spec
+
+# Sistema
+.DS_Store
+Thumbs.db

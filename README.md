@@ -11,7 +11,11 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
 ## Qué hace
 
 1. **Cargar** — Elige un archivo de video (mp4, mkv, mov, webm) o pega
-   una URL de YouTube (se descarga en MP4, máximo 1080p).
+   una URL de YouTube (se descarga en MP4, máximo 1080p). También
+   puedes **arrastrar** uno o varios videos directamente sobre la
+   ventana (uno solo se carga; varios van a la cola multi-video),
+   pegar una URL con el botón «Pegar URL» o añadir varios videos a
+   la «Cola de videos» para analizarlos uno tras otro.
 2. **Analizar** — Transcribe el audio con faster-whisper (español,
    timestamps por palabra) y detecta los 10 mejores momentos para clips
    de 30 a 90 segundos, puntuados por densidad de habla, exclamaciones,
@@ -21,12 +25,18 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
 3. **Clips** — Revisa la lista con una miniatura vertical de cada
    momento, marca los que quieres, usa «Seleccionar todo» o crea un
    clip manual con hora de inicio y fin. Cada clip tiene un botón
-   «▶ Vista previa» que genera una versión rápida (540x960) y la abre
-   en tu reproductor para verla antes de exportar. El botón
+   «▶ Vista previa» que genera una versión rápida (540x960) **con
+   los subtítulos y el recorte del clip final** y la abre en tu
+   reproductor para verla antes de exportar, y un botón «✎ Editar»
+   que abre el editor: sliders de inicio/fin, forma de onda del
+   tramo y transcripción clicable para ajustar los límites. El botón
    «✨ Reordenar con IA local» reordena los candidatos con un modelo
    de lenguaje local (Ollama, opcional) que puntúa el gancho, la
    coherencia y el remate de cada momento; sin Ollama, la app usa la
-   puntuación heurística de siempre.
+   puntuación heurística de siempre. Con «Guardar proyecto» /
+   «Abrir proyecto» puedes guardar el trabajo en un archivo
+   `.clipia` y retomarlo después (videos, clips editados y
+   selección).
 4. **Exportar** — «Descargar clips» exporta los seleccionados en
    vertical 1080x1920, con subtítulos quemados estilo Shorts (negrita,
    blanco con borde negro, abajo al centro) y el audio normalizado
@@ -40,9 +50,11 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
    «Minimal» o «Neón» (karaoke). La exportación va por una cola con
    avance global y tiempo estimado; el botón **Cancelar** la detiene
    (borra el archivo parcial) y un clip que falla se reintenta una
-   vez sin tumbar el resto. Si tu PC tiene GPU NVIDIA, Intel o AMD
-   compatible, la app usa su codificador por hardware
-   automáticamente; si no, usa la CPU.
+   vez sin tumbar el resto. Al terminar, un diálogo lista qué clips
+   salieron bien y cuáles fallaron (y por qué), con un botón «Abrir
+   carpeta» para ir a la carpeta de salida. Si tu PC tiene GPU
+   NVIDIA, Intel o AMD compatible, la app usa su codificador por
+   hardware automáticamente; si no, usa la CPU.
 
 ## Ajustes
 
@@ -64,6 +76,11 @@ El botón **⚙ Ajustes** permite elegir:
 - **Margen vertical de subtítulos**: distancia en píxeles desde
   abajo (300 por defecto). Súbelo si los botones de TikTok tapan
   los subtítulos.
+- **Modelo de Ollama**: el modelo que usa «Reordenar con IA local»
+  (`qwen2.5:7b` por defecto; en blanco usa el defecto).
+- **Lote de transcripción**: cuántas frases transcribe a la vez
+  (Automático, 4, 8 o 16). Automático elige según tu PC (16 con
+  GPU, 8 con CPU); un lote mayor usa más RAM.
 
 ## IA local (Ollama, opcional)
 
@@ -110,14 +127,18 @@ app sigue con la heurística; nunca se queda esperando.
 
 1. Haz doble clic en **`run.bat`**.
 2. Elige un video con «Examinar…» o pega una URL de YouTube.
+   También puedes arrastrar el video sobre la ventana o pegar la
+   URL con «Pegar URL». Para varios videos, añádelos a la «Cola de
+   videos» y pulsa «Analizar cola».
 3. Pulsa **«Analizar video»**. La primera vez descarga el modelo de
    voz (~150 MB, unos segundos con buena conexión).
 4. Marca los clips que quieres (puedes previsualizar cada uno con
-   «▶ Vista previa») y pulsa **«Descargar clips»**. Si el video es
-   una persona hablando, deja activado «Seguir rostros» para que el
-   recorte siga su cara.
+   «▶ Vista previa» o ajustar sus límites con «✎ Editar») y pulsa
+   **«Descargar clips»**. Si el video es una persona hablando, deja
+   activado «Seguir rostros» para que el recorte siga su cara.
 5. Los clips quedan en `Videos\ClipIA` (puedes cambiar la carpeta
-   antes de exportar).
+   antes de exportar). Al terminar, el diálogo de resultado te dice
+   qué salió bien y qué falló, con un botón para abrir la carpeta.
 
 ## Rendimiento
 
@@ -131,7 +152,7 @@ español, CPU de 4 núcleos, modelo Whisper base, 13-11-2026):
 | Transcripción (video ya analizado, caché) | ~0.3 s |
 | Detección de momentos | menos de 1 s |
 | Detección de rostros (clip de 30 s, con caras) | ~2 s (la 2ª vez, caché: instantánea) |
-| Vista previa (clip de 60 s, 540x960) | ~26 s |
+| Vista previa (clip de 60 s, 540x960, con subtítulos) | ~27 s |
 | Exportar un clip de 60 s | ~52 s (0.86x tiempo real) |
 | Exportar un clip de 30 s | ~25 s |
 
@@ -158,7 +179,7 @@ conexión, usa el detector Haar de siempre.
 | Archivo | Descripción |
 |---|---|
 | `main.py` | Interfaz gráfica (CustomTkinter, tema oscuro) |
-| `clipia/` | Núcleo dividido en módulos: `transcripcion`, `momentos`, `subtitulos`, `rostros`, `exportacion`, `descarga`, `utilidades`, `config`, `logs`, `encoder`, `cache`, `cola`, `procesos`, `ollama` |
+| `clipia/` | Núcleo dividido en módulos: `transcripcion`, `momentos`, `subtitulos`, `rostros`, `exportacion`, `descarga`, `utilidades`, `config`, `logs`, `encoder`, `cache`, `cola`, `procesos`, `ollama`, `editor`, `proyecto` |
 | `clipia_core.py` | Fachada compatible: re-exporta la API del paquete |
 | `test_pipeline.py` | Prueba de punta a punta sin interfaz gráfica |
 | `tests/` | Suite pytest (unitarios, GUI, e2e con video sintético) |
@@ -247,8 +268,10 @@ Cada push a `main` corre ruff y la suite en GitHub Actions
 La v2.0 se está construyendo por fases: Fase 0 (cimientos: corrección
 de errores, paquete `clipia/`, logging, configuración, tests y CI),
 Fase 1 (rendimiento: encoder por hardware, caché, cola de
-exportación, cancelación real) y Fase 2 (calidad de clips: cortes en
+exportación, cancelación real), Fase 2 (calidad de clips: cortes en
 frases completas, subtítulos karaoke, normalización de audio,
-detección YuNet, reordenar con IA local) ya están terminadas. Quedan
-la Fase 3 (editor de clips y mejoras de interfaz) y la Fase 4
-(instalador). Los detalles están en `CHANGELOG.md`.
+detección YuNet, reordenar con IA local) y Fase 3 (UX de producto:
+editor de clips, vista previa con subtítulos, cola multi-video,
+arrastrar y soltar, proyectos, ajustes ampliados) ya están
+terminadas. Queda la Fase 4 (instalador). Los detalles están en
+`CHANGELOG.md`.

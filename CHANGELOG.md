@@ -59,6 +59,56 @@ Todos los cambios importantes de cada versión. El formato sigue
   venv y caen al Python global si no existe.
 - CI en GitHub Actions (`windows-latest`): ruff + pytest en cada push.
 
+### Fase 3: UX de producto (13-11-2026)
+
+- **Editor de clip** (`clipia/editor.py`): cada tarjeta tiene un
+  botón «✎ Editar» que abre una ventana con sliders de inicio/fin,
+  la forma de onda del tramo (con el clip resaltado) y la
+  transcripción clicable: un clic en una palabra (o en la onda)
+  fija el límite activo (inicio o fin). Al guardar, el clip
+  actualiza sus tiempos y su texto y se conserva la selección; la
+  miniatura se regenera con el nuevo punto medio.
+- **Vista previa con subtítulos y recorte final**: la vista previa
+  reutiliza la ruta de exportación a 540x960 con los mismos
+  subtítulos (estilo y margen actuales de los ajustes) y el mismo
+  recorte que el clip final (libass escala el .ass de 1080x1920 al
+  marco de 540x960). Verificado con píxeles de texto en el
+  fotograma.
+- **Cola multi-video**: la columna izquierda tiene una sección
+  «Cola de videos» para añadir varios videos y analizarlos uno
+  tras otro; un video con error no tumba los demás. Cada clip
+  recuerda de qué video viene y las tarjetas muestran su origen
+  cuando hay varios videos.
+- **Pegar URL del portapapeles**: el botón «Pegar URL» copia una
+  URL de YouTube desde el portapapeles (avisa si no hay texto o no
+  es una URL).
+- **Arrastrar y soltar** (`tkinterdnd2`): soltar un video sobre la
+  ventana lo carga; soltar varios los añade a la cola; soltar una
+  URL la pone en el campo de URL. La integración usa la API oficial
+  `require()` para CustomTkinter (prototipo R3: tkdnd 2.10.3 carga
+  limpio) y el import es opcional: sin la librería la app funciona
+  sin DnD.
+- **Guardar/cargar proyecto** (`clipia/proyecto.py`): los botones
+  «Guardar proyecto» / «Abrir proyecto» guardan un archivo
+  `.clipia` (JSON) con los videos analizados (ruta, duración y
+  transcripción), los clips (con los tiempos editados), la
+  selección y la carpeta de salida. Al abrir, los videos que ya no
+  están en su ruta se ofrecen para localizarlos. Las miniaturas se
+  regeneran al abrir.
+- **Ajustes ampliados**: el diálogo de Ajustes tiene dos secciones
+  nuevas — el modelo de Ollama para el reordenado con IA local
+  (por defecto `qwen2.5:7b`) y el lote de transcripción
+  (Automático/4/8/16) — y el contenido se desplaza para que quepa
+  en pantallas bajas; el botón Guardar queda fijo abajo.
+- **Resumen de exportación**: al terminar, un diálogo lista cada
+  clip con ✓/✗/⊘ (y el motivo del fallo) y un botón «Abrir
+  carpeta» que abre la carpeta de salida. Si todo se canceló, no
+  se muestra el diálogo.
+- La suite pytest crece a 280 tests (editor, vista previa con
+  subtítulos quemados, cola multi-video, pegar URL, proyecto,
+  ajustes persistidos, resultado de exportación, arrastrar y
+  soltar).
+
 ### Fase 2: calidad de clips (13-11-2026)
 
 - **Cortes en frases completas** (`clipia/momentos.py`): el fin de

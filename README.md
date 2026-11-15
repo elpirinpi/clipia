@@ -15,23 +15,34 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
 2. **Analizar** — Transcribe el audio con faster-whisper (español,
    timestamps por palabra) y detecta los 10 mejores momentos para clips
    de 30 a 90 segundos, puntuados por densidad de habla, exclamaciones,
-   preguntas y palabras gancho.
+   preguntas y palabras gancho (ponderadas por rareza dentro del
+   propio video). Cada clip empieza y termina en una frontera de
+   frase: nunca corta una palabra a la mitad.
 3. **Clips** — Revisa la lista con una miniatura vertical de cada
    momento, marca los que quieres, usa «Seleccionar todo» o crea un
    clip manual con hora de inicio y fin. Cada clip tiene un botón
    «▶ Vista previa» que genera una versión rápida (540x960) y la abre
-   en tu reproductor para verla antes de exportar.
+   en tu reproductor para verla antes de exportar. El botón
+   «✨ Reordenar con IA local» reordena los candidatos con un modelo
+   de lenguaje local (Ollama, opcional) que puntúa el gancho, la
+   coherencia y el remate de cada momento; sin Ollama, la app usa la
+   puntuación heurística de siempre.
 4. **Exportar** — «Descargar clips» exporta los seleccionados en
    vertical 1080x1920, con subtítulos quemados estilo Shorts (negrita,
-   blanco con borde negro, abajo al centro), H.264 + AAC. Con la
-   opción «Seguir rostros» activada, el recorte vertical sigue la
-   cara del hablante en vez de centrarse siempre en la imagen; si no
-   se detecta ninguna cara, usa el centro como antes. La exportación
-   va por una cola con avance global y tiempo estimado; el botón
-   **Cancelar** la detiene (borra el archivo parcial) y un clip que
-   falla se reintenta una vez sin tumbar el resto. Si tu PC tiene
-   GPU NVIDIA, Intel o AMD compatible, la app usa su codificador por
-   hardware automáticamente; si no, usa la CPU.
+   blanco con borde negro, abajo al centro) y el audio normalizado
+   a -14 LUFS (el nivel de TikTok/Reels/Shorts). Con la opción
+   «Seguir rostros» activada, el recorte vertical sigue la cara del
+   hablante (detección YuNet, que también ve perfiles y caras
+   parcialmente tapadas) en vez de centrarse siempre en la imagen;
+   si no se detecta ninguna cara, usa el centro como antes. En
+   Ajustes se elige el estilo de subtítulos: «Shorts clásico»,
+   «Hormozi» (palabra activa amarilla en MAYÚSCULAS, karaoke),
+   «Minimal» o «Neón» (karaoke). La exportación va por una cola con
+   avance global y tiempo estimado; el botón **Cancelar** la detiene
+   (borra el archivo parcial) y un clip que falla se reintenta una
+   vez sin tumbar el resto. Si tu PC tiene GPU NVIDIA, Intel o AMD
+   compatible, la app usa su codificador por hardware
+   automáticamente; si no, usa la CPU.
 
 ## Ajustes
 
@@ -47,6 +58,28 @@ El botón **⚙ Ajustes** permite elegir:
   francés, italiano, alemán o autodetectar.
 - **Clips a exportar a la vez**: automático (1 con CPU, 2 con
   codificador por hardware) o 1–3 fijos.
+- **Estilo de subtítulos**: «Shorts clásico» (por defecto),
+  «Hormozi» (karaoke, palabra activa amarilla en MAYÚSCULAS),
+  «Minimal» (letra más pequeña) o «Neón» (karaoke cian/magenta).
+- **Margen vertical de subtítulos**: distancia en píxeles desde
+  abajo (300 por defecto). Súbelo si los botones de TikTok tapan
+  los subtítulos.
+
+## IA local (Ollama, opcional)
+
+El botón «✨ Reordenar con IA local» usa un modelo de lenguaje que
+corre en tu propio PC, vía [Ollama](https://ollama.com). Es
+opcional: sin Ollama, la app ordena los clips con su puntuación
+heurística de siempre.
+
+Para activarlo:
+
+1. Instala Ollama desde https://ollama.com (Windows).
+2. En una terminal: `ollama pull qwen2.5:7b` (~4.7 GB).
+3. Deja Ollama corriendo y pulsa el botón en la app.
+
+Si Ollama no está instalado o no responde, el botón lo indica y la
+app sigue con la heurística; nunca se queda esperando.
 
 ## Requisitos
 
@@ -99,7 +132,7 @@ español, CPU de 4 núcleos, modelo Whisper base, 13-11-2026):
 | Detección de momentos | menos de 1 s |
 | Detección de rostros (clip de 30 s, con caras) | ~2 s (la 2ª vez, caché: instantánea) |
 | Vista previa (clip de 60 s, 540x960) | ~26 s |
-| Exportar un clip de 60 s | ~49 s |
+| Exportar un clip de 60 s | ~52 s (0.86x tiempo real) |
 | Exportar un clip de 30 s | ~25 s |
 
 La transcripción y la detección de rostros se guardan en caché: si
@@ -116,14 +149,16 @@ que libx264 en CPU. En este servidor de desarrollo no hay GPU, así
 que los tiempos de GPU están pendientes de medir en el PC de destino.
 
 La primera vez que se analiza un video, la app descarga el modelo de
-voz base (~150 MB).
+voz base (~150 MB). La primera vez que se detectan rostros, descarga
+además el modelo YuNet (~230 KB, con verificación de integridad); sin
+conexión, usa el detector Haar de siempre.
 
 ## Archivos del proyecto
 
 | Archivo | Descripción |
 |---|---|
 | `main.py` | Interfaz gráfica (CustomTkinter, tema oscuro) |
-| `clipia/` | Núcleo dividido en módulos: `transcripcion`, `momentos`, `subtitulos`, `rostros`, `exportacion`, `descarga`, `utilidades`, `config`, `logs`, `encoder`, `cache`, `cola`, `procesos` |
+| `clipia/` | Núcleo dividido en módulos: `transcripcion`, `momentos`, `subtitulos`, `rostros`, `exportacion`, `descarga`, `utilidades`, `config`, `logs`, `encoder`, `cache`, `cola`, `procesos`, `ollama` |
 | `clipia_core.py` | Fachada compatible: re-exporta la API del paquete |
 | `test_pipeline.py` | Prueba de punta a punta sin interfaz gráfica |
 | `tests/` | Suite pytest (unitarios, GUI, e2e con video sintético) |
@@ -192,6 +227,10 @@ Cada push a `main` corre ruff y la suite en GitHub Actions
   la app sigue con el recorte centrado en vez de quedarse congelada.
   Si pasa de todos modos, desmarca «Seguir rostros» y exporta con
   el recorte centrado de siempre.
+- **«Reordenar con IA local» dice que Ollama no está disponible**:
+  instala Ollama y el modelo con `ollama pull qwen2.5:7b` (ver la
+  sección «IA local» más arriba). Sin Ollama la app funciona igual
+  con su puntuación heurística.
 - **La transcripción es lenta**: es normal en CPU. Con una GPU
   compatible con CUDA es mucho más rápida.
 - **Los subtítulos no se ven**: el ffmpeg instalado debe incluir
@@ -206,10 +245,10 @@ Cada push a `main` corre ruff y la suite en GitHub Actions
 ## v2.0 (en desarrollo)
 
 La v2.0 se está construyendo por fases: Fase 0 (cimientos: corrección
-de errores, paquete `clipia/`, logging, configuración, tests y CI)
-y Fase 1 (rendimiento: encoder por hardware, caché, cola de
-exportación, cancelación real) ya están terminadas. Quedan la Fase 2
-(calidad de clips: cortes en frases completas, subtítulos karaoke,
-normalización de audio), la Fase 3 (editor de clips y mejoras de
-interfaz) y la Fase 4 (instalador). Los detalles están en
-`CHANGELOG.md`.
+de errores, paquete `clipia/`, logging, configuración, tests y CI),
+Fase 1 (rendimiento: encoder por hardware, caché, cola de
+exportación, cancelación real) y Fase 2 (calidad de clips: cortes en
+frases completas, subtítulos karaoke, normalización de audio,
+detección YuNet, reordenar con IA local) ya están terminadas. Quedan
+la Fase 3 (editor de clips y mejoras de interfaz) y la Fase 4
+(instalador). Los detalles están en `CHANGELOG.md`.

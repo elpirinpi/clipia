@@ -59,6 +59,65 @@ Todos los cambios importantes de cada versión. El formato sigue
   venv y caen al Python global si no existe.
 - CI en GitHub Actions (`windows-latest`): ruff + pytest en cada push.
 
+### Fase 2: calidad de clips (13-11-2026)
+
+- **Cortes en frases completas** (`clipia/momentos.py`): el fin de
+  cada clip se ajusta a la frontera de frase más cercana con los
+  timestamps por palabra (antes `fin = inicio + duración` cortaba a
+  media palabra). Los clips duran como mínimo 25 s; si una sola
+  frase cubre toda la ventana, el clip termina al final de esa
+  frase. Verificado: 0 cortes a media frase en el video de prueba.
+- **Palabras gancho limpias y ponderadas por rareza**: fuera «te»,
+  «voy», «pasa», «paso», «todos», «ahora» y «nuevo» (y los
+  duplicados); cada palabra gancho se pondera con un idf simple
+  sobre el propio video, así una palabra rara («secreto») pesa más
+  que una que se repite en todo el video.
+- **Reordenar con IA local, opcional** (`clipia/ollama.py`): el
+  botón «✨ Reordenar con IA local» envía los ~25 mejores candidatos
+  a un LLM local vía Ollama (`qwen2.5:7b` por defecto) que puntúa
+  gancho, coherencia y remate de cada uno; la puntuación final
+  mezcla un 60% de la IA con un 40% de la heurística. Sin Ollama
+  instalado, el botón muestra las instrucciones de instalación y la
+  app sigue con la heurística de siempre; si Ollama no responde, no
+  bloquea (timeout de 2 s para conectar, 180 s para generar) y se
+  conserva el orden heurístico. La selección de clips se conserva
+  al reordenar.
+- **Subtítulos karaoke y presets** (`clipia/subtitulos.py`): cuatro
+  estilos — «Shorts clásico» (el de siempre), «Hormozi» (palabra
+  activa amarilla, MAYÚSCULAS, karaoke), «Minimal» (letra más
+  pequeña, sin negrita) y «Neón» (cian/magenta, karaoke). Los
+  estilos karaoke pintan cada palabra al pronunciarse (tags `\k`
+  de ASS con los timestamps por palabra). El **margen vertical** es
+  configurable en Ajustes (300 px por defecto; súbelo si los
+  botones de TikTok tapan los subtítulos). El estilo y el margen se
+  guardan en la configuración.
+- **Audio normalizado a -14 LUFS**: cada clip exportado pasa por
+  `loudnorm` en una sola pasada con ganancia lineal (sin bombeo
+  dinámico en la voz), el nivel de TikTok/Reels/Shorts. Solo se
+  aplica si el video tiene audio. Coste: ~1 s por clip de 60 s.
+- **Detección de rostros con YuNet** (`clipia/rostros.py`):
+  `cv2.FaceDetectorYN` en vez de Haar: detecta perfiles y caras
+  parcialmente tapadas, donde Haar fallaba. El modelo ONNX (~230 KB)
+  se descarga en el primer uso (con verificación SHA-256 y caché
+  local); sin red o sin modelo, se usa Haar como antes. La
+  trayectoria se suaviza con media móvil de 3 y **banda muerta**:
+  un movimiento menor del 5% del ancho no mueve el recorte, así el
+  tembleque de la detección no se ve en el video. El recorte usa
+  hasta **45 puntos de interpolación** (antes 12): `crop` no admite
+  comandos sendcmd, así que se subió el tope de la expresión. La
+  clave de caché de rostros incluye el detector, así las detecciones
+  de Haar no se reutilizan con YuNet. Se conservan el timeout de
+  60 s con recorte centrado y la extracción de fotogramas vía ffmpeg.
+- La suite pytest crece a 208 tests (snap a frontera de frase,
+  ponderación idf, re-ranking con Ollama ausente y simulado,
+  karaoke y cada preset, loudnorm medido a -14 LUFS, YuNet con cara
+  en movimiento, banda muerta y fallback a Haar).
+- El test de miniaturas en paralelo ya no exige un tiempo total
+  menor de 1.5 s (frágil en máquinas cargadas: se midió 29 s en una
+  corrida de la suite completa en el servidor de desarrollo); la
+  prueba de paralelismo es la concurrencia observada y el tiempo
+  solo acota un posible cuelgue.
+
 ### Fase 1: rendimiento (13-11-2026)
 
 - **Encoder por hardware autodetectado** (`clipia/encoder.py`): al

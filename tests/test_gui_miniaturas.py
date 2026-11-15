@@ -12,8 +12,12 @@ def _clips(n):
 
 
 def test_generar_miniaturas_en_paralelo(app):
-    """Con 6 clips que tardan 0.3 s cada uno, el total es mucho menor
-    que 1.8 s (secuencial) y hay concurrencia real."""
+    """Con 6 clips que tardan 0.3 s cada uno, hay concurrencia real
+    (secuencial serían 1.8 s). La prueba de paralelismo es la
+    concurrencia observada, no el tiempo total: en una máquina
+    compartida y cargada el tiempo total varía mucho (se midió
+    29 s en una corrida de la suite completa), así que el tiempo
+    solo acota un posible cuelgue."""
     app.ruta_video = "video.mp4"
     app.candidatos = _clips(6)
     estado = {"en_curso": 0, "max": 0}
@@ -38,7 +42,7 @@ def test_generar_miniaturas_en_paralelo(app):
         app._generar_miniaturas()
         total = time.time() - t0
     assert estado["max"] >= 2, "no hubo concurrencia"
-    assert total < 1.5, "tardó %.2f s (secuencial serían 1.8 s)" % total
+    assert total < 60, "tardó %.2f s (posible cuelgue)" % total
     assert all(c["miniatura"] for c in app.candidatos)
     assert len({c["miniatura"] for c in app.candidatos}) == 6
 

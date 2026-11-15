@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import tkinter as tk
 
 import pytest
 
@@ -18,11 +19,22 @@ def app(tmp_path, monkeypatch):
     import main as app_mod
 
     monkeypatch.setenv("HOME", str(tmp_path))
+    # En Windows expanduser("~") ignora HOME y usa USERPROFILE.
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     # tempfile cachea el directorio temporal: forzarlo aquí para que
     # los mkdtemp de la app caigan en tmp_path.
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
-    aplicacion = app_mod.AppClipIA()
+    try:
+        aplicacion = app_mod.AppClipIA()
+    except tk.TclError as error:
+        if "init.tcl" not in str(error):
+            raise
+        # En CI Windows (run #36) un arranque aislado falló con
+        # "Can't find a usable init.tcl" sin causa en el repo (ni
+        # cambio de cwd ni de entorno, misma fixture que los demás
+        # tests GUI): reintentar una vez; si persiste, se propaga.
+        aplicacion = app_mod.AppClipIA()
     aplicacion.withdraw()
     aplicacion.carpeta_salida = str(tmp_path / "salida")
     os.makedirs(aplicacion.carpeta_salida, exist_ok=True)

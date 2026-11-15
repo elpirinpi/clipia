@@ -53,7 +53,8 @@ def test_descargar_modelo_sin_red_devuelve_none(monkeypatch, tmp_path):
 
 def test_yunet_detecta_cara_en_movimiento():
     """En video_rostro la cara se mueve de izquierda a derecha."""
-    assert os.path.isfile(VIDEO_ROSTRO)
+    if not os.path.isfile(VIDEO_ROSTRO):
+        pytest.skip("solo local: necesita el video de prueba")
     muestras = detectar_rostros(VIDEO_ROSTRO, 0.0, 30.0, intervalo=2.0)
     assert len(muestras) >= 10
     assert muestras[0][1] < 0.4  # empieza a la izquierda
@@ -85,6 +86,8 @@ def test_banda_muerta_es_5_por_ciento():
 
 def test_fallback_haar_sin_modelo(monkeypatch):
     """Sin modelo YuNet, Haar sigue detectando la cara frontal."""
+    if not os.path.isfile(VIDEO_ROSTRO):
+        pytest.skip("solo local: necesita el video de prueba")
     monkeypatch.setattr("clipia.rostros.descargar_modelo_yunet",
                         lambda progreso=None, timeout=120: None)
     muestras = detectar_rostros(VIDEO_ROSTRO, 0.0, 30.0, intervalo=2.0,
@@ -93,14 +96,18 @@ def test_fallback_haar_sin_modelo(monkeypatch):
     assert muestras[-1][1] > muestras[0][1]
 
 
-def test_clave_cache_incluye_detector():
-    clave_yunet = clave_archivo(VIDEO_ROSTRO, version=1, inicio=0.0,
+def test_clave_cache_incluye_detector(tmp_path):
+    # La clave solo necesita un archivo existente: no usar el video
+    # local (en CI no existe) para que el test corra en todas partes.
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"fake")
+    clave_yunet = clave_archivo(str(video), version=1, inicio=0.0,
                                 fin=30.0, intervalo=2.0, detector="yunet")
-    clave_haar = clave_archivo(VIDEO_ROSTRO, version=1, inicio=0.0,
+    clave_haar = clave_archivo(str(video), version=1, inicio=0.0,
                                fin=30.0, intervalo=2.0, detector="haar")
     assert clave_yunet != clave_haar
     # Sin detector (clave vieja de Fase 1) tampoco coincide.
-    clave_vieja = clave_archivo(VIDEO_ROSTRO, version=1, inicio=0.0,
+    clave_vieja = clave_archivo(str(video), version=1, inicio=0.0,
                                 fin=30.0, intervalo=2.0)
     assert clave_vieja != clave_yunet
     assert clave_vieja != clave_haar

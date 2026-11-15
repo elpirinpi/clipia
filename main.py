@@ -941,6 +941,13 @@ class AppClipIA(DnDWrapper, ctk.CTk):
         except tk.TclError:
             datos = [evento.data]
         archivos = [d for d in datos if os.path.isfile(d)]
+        if not archivos and evento.data:
+            # Respaldo: si la fuente entrega la ruta sin entrecomillar
+            # en formato Tcl, splitlist destroza las barras invertidas
+            # de Windows; la ruta cruda sigue siendo un archivo real.
+            crudo = evento.data.strip()
+            if crudo and os.path.isfile(crudo):
+                archivos = [crudo]
         if archivos:
             videos = [a for a in archivos
                       if a.lower().endswith((".mp4", ".mkv", ".mov",

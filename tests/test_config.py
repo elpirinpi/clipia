@@ -78,5 +78,7 @@ def test_ruta_config_sin_appdata_usa_home(monkeypatch, tmp_path):
     """Sin APPDATA (Linux), la config va a ~/.config/ClipIA."""
     monkeypatch.delenv("APPDATA", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    # En Windows expanduser("~") ignora HOME y usa USERPROFILE.
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     assert ruta_config() == os.path.join(str(tmp_path), ".config",
                                          "ClipIA", "config.json")

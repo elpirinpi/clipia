@@ -21,6 +21,8 @@ def test_carpeta_logs_sin_localappdata_usa_home(monkeypatch, tmp_path):
     """Sin LOCALAPPDATA (Linux), los logs van a ~/.local/share/ClipIA."""
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    # En Windows expanduser("~") ignora HOME y usa USERPROFILE.
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     assert carpeta_logs() == os.path.join(str(tmp_path), ".local", "share",
                                           "ClipIA", "logs")
 
@@ -30,6 +32,7 @@ def test_configurar_logging_crea_archivo_y_escribe(monkeypatch, tmp_path):
     archivo."""
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     logger = configurar_logging(nombre="clipia_test_archivo")
     try:
         logger.info("mensaje de prueba 123")
@@ -45,6 +48,7 @@ def test_configurar_logging_es_idempotente(monkeypatch, tmp_path):
     """Llamar dos veces no duplica los handlers."""
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     logger = configurar_logging(nombre="clipia_test_idem")
     try:
         assert len(logger.handlers) == 2  # consola + archivo

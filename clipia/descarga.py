@@ -4,10 +4,24 @@ Fase 4: cookies del navegador (anti-bot) opcionales y errores
 accionables: cada fallo de yt-dlp se traduce a un mensaje en español
 que dice qué hacer (iniciar sesión en YouTube, actualizar yt-dlp,
 revisar la conexión...), en vez del texto técnico de yt-dlp.
+
+Actualización de yt-dlp: en modo dev/venv se actualiza con pip; en
+el instalador (PyInstaller) la librería empaquetada NO se puede
+actualizar con pip, así que la app descarga el binario standalone
+oficial (yt-dlp.exe, ~23 MB) y lo prefiere sobre la librería cuando
+existe. El binario se auto-actualiza con `yt-dlp -U`.
 """
 import logging
 import os
+import re
+import subprocess
+import sys
+import tempfile
+import urllib.error
+import urllib.request
 from collections.abc import Callable
+
+from .procesos import ejecutar, olvidar, registrar
 
 log = logging.getLogger("clipia.descarga")
 
@@ -20,6 +34,19 @@ NAVEGADORES_COOKIES = ("chrome", "edge", "firefox")
 FORMATO_VIDEO = ("bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/"
                  "bestvideo[height<=1080]+bestaudio/"
                  "best[height<=1080]/best")
+
+# Binario standalone oficial de yt-dlp para Windows (el que usa el
+# instalador: la librería empaquetada no se puede actualizar con
+# pip). "latest" redirige al último release (~23 MB, verificado
+# 13-11-2026: 200 OK, 23.575.744 bytes).
+URL_YTDLP_EXE = ("https://github.com/yt-dlp/yt-dlp/releases/latest/"
+                 "download/yt-dlp.exe")
+# Tamaño mínimo aceptable del binario descargado (el real pesa
+# ~23 MB; por debajo de 1 MB es un error de descarga o una página).
+_TAMANO_MINIMO_YTDLP_EXE = 1_000_000
+
+# Línea de avance de yt-dlp en modo CLI: "[download]  45.2% of ...".
+_RE_AVANCE = re.compile(r"\[download\]\s+(\d+(?:\.\d+)?)%")
 
 # Mensajes accionables por código de error (ver
 # clasificar_error_descarga). "%s" es el detalle técnico, solo en
@@ -117,6 +144,165 @@ def _error_descarga(error: Exception) -> ErrorDescarga:
                          clasificar_error_descarga(str(error)))
 
 
+# --- Binario externo de yt-dlp (instalador) ------------------------------
+
+def esta_congelado() -> bool:
+    """True si la app corre empaquetada con PyInstaller (instalador)
+    en vez de desde el código fuente."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def carpeta_bin_yt_dlp() -> str:
+    """Carpeta de los binarios de ClipIA: %LOCALAPPDATA%/ClipIA/bin
+    en Windows (~/.local/share/ClipIA/bin en otros sistemas)."""
+    base = os.environ.get("LOCALAPPDATA")
+    if base:
+        return os.path.join(base, "ClipIA", "bin")
+    return os.path.join(os.path.expanduser("~"), ".local", "share",
+                        "ClipIA", "bin")
+
+
+def ruta_ytdlp_externo() -> str | None:
+    """Ruta del binario standalone yt-dlp.exe, si existe.
+
+    Solo en Windows: en otros sistemas el .exe no puede ejecutarse.
+    Se busca junto al ejecutable de la app (instalador) y en la
+    carpeta de binarios de ClipIA (donde lo deja «Actualizar yt-dlp»).
+    """
+    if os.name != "nt":
+        return None
+    candidatos = []
+    if esta_congelado():
+        candidatos.append(
+            os.path.join(os.path.dirname(sys.executable), "yt-dlp.exe"))
+    candidatos.append(os.path.join(carpeta_bin_yt_dlp(), "yt-dlp.exe"))
+    for ruta in candidatos:
+        if os.path.isfile(ruta):
+            return ruta
+    return None
+
+
+def version_ytdlp() -> str | None:
+    """Versión de yt-dlp en uso (del binario externo si existe; si
+    no, de la librería). None si no se puede saber."""
+    exe = ruta_ytdlp_externo()
+    if exe:
+        try:
+            resultado = ejecutar([exe, "--version"], timeout=15,
+                                 capture_output=True, text=True)
+            if resultado.returncode == 0 and resultado.stdout:
+                return resultado.stdout.strip().splitlines()[0].strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return None
+    try:
+        import yt_dlp
+
+        return yt_dlp.version.__version__
+    except (ImportError, AttributeError):
+        return None
+
+
+def _descargar_ytdlp_exe(progreso: Callable[[float], None] | None = None,
+                         timeout: int = 300) -> str:
+    """Descarga el binario standalone yt-dlp.exe a la carpeta de
+    binarios (escritura atómica). Verifica que sea un ejecutable
+    Windows ("MZ") de tamaño razonable. Devuelve su ruta."""
+    carpeta = carpeta_bin_yt_dlp()
+    os.makedirs(carpeta, exist_ok=True)
+    destino = os.path.join(carpeta, "yt-dlp.exe")
+    tmp = destino + ".tmp"
+    try:
+        peticion = urllib.request.Request(
+            URL_YTDLP_EXE, headers={"User-Agent": "ClipIA"})
+        with urllib.request.urlopen(peticion,
+                                    timeout=timeout) as respuesta:
+            total = int(respuesta.headers.get("Content-Length") or 0)
+            descargado = 0
+            with open(tmp, "wb") as archivo:
+                while True:
+                    bloque = respuesta.read(65536)
+                    if not bloque:
+                        break
+                    archivo.write(bloque)
+                    descargado += len(bloque)
+                    if progreso and total:
+                        progreso(min(1.0, descargado / total))
+    except (OSError, urllib.error.URLError, ValueError) as error:
+        log.warning("no se pudo descargar yt-dlp.exe (%s)", error)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise RuntimeError("No se pudo descargar yt-dlp. Revisa tu "
+                           "conexión a internet y reintenta.") from error
+    try:
+        with open(tmp, "rb") as archivo:
+            cabecera = archivo.read(2)
+        tamano = os.path.getsize(tmp)
+    except OSError as error:
+        raise RuntimeError("No se pudo descargar yt-dlp. Revisa tu "
+                           "conexión a internet y reintenta.") from error
+    if cabecera != b"MZ" or tamano < _TAMANO_MINIMO_YTDLP_EXE:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise RuntimeError("La descarga de yt-dlp no es válida "
+                           "(archivo corrupto o incompleto). Reintenta.")
+    os.replace(tmp, destino)
+    if progreso:
+        progreso(1.0)
+    return destino
+
+
+def actualizar_ytdlp(progreso: Callable[[float], None] | None = None
+                     ) -> str:
+    """Actualiza yt-dlp y devuelve la versión nueva.
+
+    En el instalador: si ya existe el binario externo, lo
+    auto-actualiza (`yt-dlp -U`); si no, lo descarga. En modo
+    dev/venv: `pip install --upgrade yt-dlp` (la versión nueva se
+    usa al reiniciar la app, porque este proceso ya cargó la vieja).
+    Lanza RuntimeError con un mensaje accionable si falla.
+    """
+    if esta_congelado():
+        exe = ruta_ytdlp_externo()
+        if exe:
+            resultado = ejecutar([exe, "-U"], timeout=300,
+                                 capture_output=True, text=True)
+            if resultado.returncode != 0:
+                raise RuntimeError("No se pudo actualizar yt-dlp. "
+                                   "Revisa tu conexión a internet y "
+                                   "reintenta.")
+        else:
+            _descargar_ytdlp_exe(progreso)
+    else:
+        resultado = ejecutar(
+            [sys.executable, "-m", "pip", "install", "--upgrade",
+             "yt-dlp"],
+            timeout=300, capture_output=True, text=True)
+        if resultado.returncode != 0:
+            raise RuntimeError("No se pudo actualizar yt-dlp con pip. "
+                               "Revisa tu conexión a internet y "
+                               "reintenta.")
+        # La versión nueva se lee en un proceso aparte: este proceso
+        # ya tiene cargada (o cargará) la versión vieja.
+        resultado = ejecutar(
+            [sys.executable, "-c",
+             "import yt_dlp; print(yt_dlp.version.__version__)"],
+            timeout=60, capture_output=True, text=True)
+        if resultado.returncode == 0 and resultado.stdout:
+            return resultado.stdout.strip().splitlines()[0].strip()
+        raise RuntimeError("yt-dlp se actualizó, pero no se pudo "
+                           "confirmar la versión nueva. Reinicia la app.")
+    version = version_ytdlp()
+    if not version:
+        raise RuntimeError("yt-dlp se actualizó, pero no se pudo "
+                           "confirmar la versión nueva. Reinicia la app.")
+    return version
+
+
 def _opciones_descarga(carpeta_destino: str, gancho_estado,
                        navegador: str | None) -> dict:
     """Opciones de yt-dlp para la descarga (máximo 1080p, MP4)."""
@@ -171,6 +357,107 @@ def _descargar_con_libreria(url: str, carpeta_destino: str,
     return ruta
 
 
+def _descargar_con_binario(exe: str, url: str, carpeta_destino: str,
+                           progreso: Callable[[float], None] | None,
+                           navegador: str | None) -> str:
+    """Descarga con el binario standalone yt-dlp.exe (instalador).
+
+    Mismas opciones que la librería. El avance se lee de las líneas
+    "[download] NN%"; la ruta final se pide con --print-to-file
+    (equivalente a requested_downloads: tras el merge). La salida de
+    error va por el MISMO tubo que el avance (v1.1.3): un tubo aparte
+    sin leer se llena en Windows y congela el proceso.
+    """
+    os.makedirs(carpeta_destino, exist_ok=True)
+    descriptor, ruta_tmp = tempfile.mkstemp(
+        prefix="clipia_ruta_", suffix=".txt", dir=carpeta_destino)
+    os.close(descriptor)
+    comando = [exe,
+               "--format", FORMATO_VIDEO,
+               "--merge-output-format", "mp4",
+               "--no-playlist",
+               "--restrict-filenames",
+               "-o", os.path.join(carpeta_destino, "%(title)s.%(ext)s"),
+               "--no-warnings",
+               "--newline", "--progress",
+               "--print-to-file", "after_move:filepath", ruta_tmp]
+    if navegador:
+        comando += ["--cookies-from-browser", navegador]
+    comando.append(url)
+    proceso = None
+    cola_error = ""
+    try:
+        proceso = registrar(subprocess.Popen(
+            comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True))
+        if proceso.stdout is not None:
+            for linea in proceso.stdout:
+                cola_error = (cola_error + linea)[-4000:]
+                coincidencia = _RE_AVANCE.search(linea)
+                if coincidencia and progreso:
+                    try:
+                        progreso(min(1.0, float(coincidencia.group(1))
+                                     / 100.0))
+                    except ValueError:
+                        pass
+        proceso.wait()
+    except OSError as error:
+        raise _error_descarga(error) from error
+    finally:
+        if proceso is not None:
+            olvidar(proceso)
+    if proceso.returncode != 0:
+        raise _error_descarga(RuntimeError(
+            cola_error.strip()
+            or "yt-dlp terminó con código %d" % proceso.returncode))
+    ruta = None
+    try:
+        with open(ruta_tmp, encoding="utf-8") as archivo:
+            ruta = archivo.read().strip()
+    except OSError:
+        pass
+    finally:
+        try:
+            os.remove(ruta_tmp)
+        except OSError:
+            pass
+    if ruta and os.path.isfile(ruta):
+        if progreso:
+            progreso(1.0)
+        return ruta
+    # Respaldo: el mp4 más reciente de la carpeta (por si el
+    # --print-to-file no dejó la ruta).
+    try:
+        mp4s = [os.path.join(carpeta_destino, nombre)
+                for nombre in os.listdir(carpeta_destino)
+                if nombre.lower().endswith(".mp4")]
+    except OSError:
+        mp4s = []
+    if mp4s:
+        reciente = max(mp4s, key=os.path.getmtime)
+        if progreso:
+            progreso(1.0)
+        return reciente
+    raise ErrorDescarga(
+        "yt-dlp terminó sin dejar el archivo descargado. Reintenta; "
+        "si sigue pasando, descarga el video con el navegador y usa "
+        "el archivo local.", "otro")
+
+
+def _descargar(url: str, carpeta_destino: str,
+               progreso: Callable[[float], None] | None,
+               navegador: str | None) -> str:
+    """Descarga con el binario externo si existe; si no, con la
+    librería yt_dlp."""
+    exe = ruta_ytdlp_externo()
+    if exe:
+        log.info("descargando con el binario externo de yt-dlp")
+        return _descargar_con_binario(exe, url, carpeta_destino,
+                                      progreso, navegador)
+    return _descargar_con_libreria(url, carpeta_destino, progreso,
+                                   navegador)
+
+
 def descargar_youtube(url: str, carpeta_destino: str,
                       progreso: Callable[[float], None] | None = None,
                       navegador: str | None = None) -> str:
@@ -185,11 +472,9 @@ def descargar_youtube(url: str, carpeta_destino: str,
     """
     navegador = navegador if navegador in NAVEGADORES_COOKIES else None
     if navegador is None:
-        return _descargar_con_libreria(url, carpeta_destino,
-                                       progreso, None)
+        return _descargar(url, carpeta_destino, progreso, None)
     try:
-        return _descargar_con_libreria(url, carpeta_destino,
-                                       progreso, navegador)
+        return _descargar(url, carpeta_destino, progreso, navegador)
     except ErrorDescarga as error:
         if error.codigo != "cookies":
             raise
@@ -198,5 +483,4 @@ def descargar_youtube(url: str, carpeta_destino: str,
         # de videos.
         log.warning("las cookies de %s fallaron; reintentando "
                     "sin cookies", navegador)
-        return _descargar_con_libreria(url, carpeta_destino,
-                                       progreso, None)
+        return _descargar(url, carpeta_destino, progreso, None)

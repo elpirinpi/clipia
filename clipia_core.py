@@ -22,9 +22,13 @@ from clipia.cola import (
 from clipia.descarga import (
     NAVEGADORES_COOKIES,
     ErrorDescarga,
+    actualizar_ytdlp,
     clasificar_error_descarga,
     descargar_youtube,
+    esta_congelado,
     mensaje_error_descarga,
+    ruta_ytdlp_externo,
+    version_ytdlp,
 )
 from clipia.encoder import (
                                 descripcion_encoder,
@@ -117,6 +121,7 @@ __all__ = [
     "_leer_wav_numpy",
     "_puntuar_ventana",
     "_traslapan",
+    "actualizar_ytdlp",
     "carpeta_cache",
     "clasificar_error_descarga",
     "clave_archivo",
@@ -129,6 +134,7 @@ __all__ = [
     "detectar_rostros_con_limite",
     "ejecutar",
     "escribir_cache",
+    "esta_congelado",
     "exportar_clip",
     "formato_ass",
     "formato_hora",
@@ -148,8 +154,10 @@ __all__ = [
     "ram_total_gb",
     "registrar",
     "rerank_ollama",
+    "ruta_ytdlp_externo",
     "tiene_audio",
     "transcribir",
+    "version_ytdlp",
     "workers_efectivos",
     "workers_recomendados",
 ]

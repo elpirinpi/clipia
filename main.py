@@ -371,6 +371,30 @@ class DialogoAjustes(ctk.CTkToplevel):
             font=ctk.CTkFont(size=11), text_color=SILENCIO,
             justify="left").pack(padx=24, pady=(8, 4), anchor="w")
 
+        ctk.CTkLabel(contenido, text="Actualizar yt-dlp",
+                     font=ctk.CTkFont(size=12), text_color=SILENCIO,
+                     anchor="w").pack(fill="x", padx=24, pady=(12, 4))
+        fila_ytdlp = ctk.CTkFrame(contenido, fg_color="transparent")
+        fila_ytdlp.pack(fill="x", padx=24)
+        version = core.version_ytdlp()
+        self.etiqueta_ytdlp = ctk.CTkLabel(
+            fila_ytdlp,
+            text="yt-dlp: %s" % version if version
+            else "yt-dlp: no disponible",
+            font=ctk.CTkFont(size=12), text_color=TEXTO)
+        self.etiqueta_ytdlp.pack(side="left")
+        self.boton_ytdlp = ctk.CTkButton(
+            fila_ytdlp, text="Actualizar yt-dlp", width=150,
+            fg_color=AZUL, hover_color=AZUL_HOVER,
+            command=self._actualizar_ytdlp)
+        self.boton_ytdlp.pack(side="right")
+        ctk.CTkLabel(
+            contenido,
+            text="YouTube cambia a menudo: si una descarga falla,\n"
+                 "actualiza yt-dlp antes de reintentar.",
+            font=ctk.CTkFont(size=11), text_color=SILENCIO,
+            justify="left").pack(padx=24, pady=(8, 4), anchor="w")
+
         self.boton_guardar = ctk.CTkButton(
             self, text="Guardar", fg_color=AZUL, hover_color=AZUL_HOVER,
             command=self._guardar,
@@ -398,6 +422,38 @@ class DialogoAjustes(ctk.CTkToplevel):
                      % (necesario, self._ram_total))
             color = ROJO
         self.etiqueta_ram.configure(text=texto, text_color=color)
+
+    def _actualizar_ytdlp(self) -> None:
+        """Actualiza yt-dlp en segundo plano (la red es lenta)."""
+        self.boton_ytdlp.configure(state="disabled")
+        self.etiqueta_ytdlp.configure(text="Actualizando yt-dlp…")
+        threading.Thread(target=self._hilo_actualizar_ytdlp,
+                         daemon=True).start()
+
+    def _hilo_actualizar_ytdlp(self) -> None:
+        """Actualiza yt-dlp y deja el resultado en la etiqueta."""
+        try:
+            version = core.actualizar_ytdlp()
+            if core.esta_congelado():
+                texto = "yt-dlp: %s" % version
+            else:
+                # En modo dev la versión nueva se usa al reiniciar
+                # la app: este proceso ya cargó la vieja.
+                texto = ("yt-dlp: %s (reinicia la app para usarlo)"
+                         % version)
+        except Exception as error:  # noqa: BLE001 - mostrar el error
+            texto = "No se pudo actualizar: %s" % error
+        try:
+            self.after(0, self._mostrar_version_ytdlp, texto)
+        except tk.TclError:
+            pass  # el diálogo se cerró mientras actualizaba
+
+    def _mostrar_version_ytdlp(self, texto: str) -> None:
+        try:
+            self.etiqueta_ytdlp.configure(text=texto)
+            self.boton_ytdlp.configure(state="normal")
+        except tk.TclError:
+            pass  # el diálogo se cerró
 
     def _guardar(self) -> None:
         elegido = self.variable_encoder.get()

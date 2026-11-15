@@ -78,3 +78,44 @@ def test_detalle_error_muestra_el_mensaje_accionable_tal_cual():
 def test_detalle_error_de_otros_errores_lleva_el_tipo():
     assert app_mod._detalle_error(RuntimeError("fallo")) == (
         "RuntimeError: fallo")
+
+
+# --- Botón "Actualizar yt-dlp" -------------------------------------------
+
+def test_dialogo_muestra_version_y_boton_actualizar(app):
+    dialogo = app_mod.DialogoAjustes(app, {}, lambda valores: None)
+    try:
+        assert "yt-dlp:" in dialogo.etiqueta_ytdlp.cget("text")
+        assert dialogo.boton_ytdlp.cget("text") == "Actualizar yt-dlp"
+    finally:
+        dialogo.destroy()
+
+
+def test_hilo_actualizar_ytdlp_deja_la_version_en_la_etiqueta(app):
+    """Tras actualizar (mockeado), la etiqueta muestra la versión
+    nueva y el botón se reactiva."""
+    dialogo = app_mod.DialogoAjustes(app, {}, lambda valores: None)
+    try:
+        dialogo.boton_ytdlp.configure(state="disabled")
+        with mock.patch.object(core, "actualizar_ytdlp",
+                               return_value="2026.11.05"):
+            dialogo._hilo_actualizar_ytdlp()
+        app.update()
+        assert "2026.11.05" in dialogo.etiqueta_ytdlp.cget("text")
+        assert dialogo.boton_ytdlp.cget("state") == "normal"
+    finally:
+        dialogo.destroy()
+
+
+def test_hilo_actualizar_ytdlp_muestra_el_error(app):
+    dialogo = app_mod.DialogoAjustes(app, {}, lambda valores: None)
+    try:
+        with mock.patch.object(core, "actualizar_ytdlp",
+                               side_effect=RuntimeError("sin red")):
+            dialogo._hilo_actualizar_ytdlp()
+        app.update()
+        assert "No se pudo actualizar" in dialogo.etiqueta_ytdlp.cget(
+            "text")
+        assert dialogo.boton_ytdlp.cget("state") == "normal"
+    finally:
+        dialogo.destroy()

@@ -80,3 +80,36 @@ def test_run_verifica_todas_las_dependencias():
     assert any("if errorlevel 1 goto :instalar_deps" in l
                for l in ls[i_check:i_check + 2]), \
         "el chequeo de dependencias no lleva a :instalar_deps"
+
+
+def test_diagnostico_usa_el_mismo_interprete_que_run():
+    """B6: diagnostico.bat resuelve el intérprete igual que run.bat
+    (py -3.12 preferido) y usa %PY% en los chequeos, no `python` a secas
+    (que puede ser el de MSYS2, sin pip)."""
+    contenido = leer_bat("diagnostico.bat").decode("ascii")
+    assert "set PY=py -3.12" in contenido
+    assert '%PY% -c "import customtkinter' in contenido
+    assert '%PY% -c "import faster_whisper' in contenido
+    # Ningún chequeo de módulo con `python` a secas.
+    for l in lineas("diagnostico.bat"):
+        if l.startswith("python -c"):
+            raise AssertionError(
+                "diagnostico.bat usa `python` a secas: %r" % l)
+
+
+def test_diagnostico_comprueba_cv2_pil_numpy_ctranslate2_ffprobe_deno():
+    """B6: diagnostico.bat comprueba cv2, PIL, numpy, ctranslate2,
+    ffprobe y deno."""
+    contenido = leer_bat("diagnostico.bat").decode("ascii")
+    for marca in ("import cv2", "import PIL", "import numpy",
+                  "import ctranslate2", "where ffprobe", "where deno"):
+        assert marca in contenido, "diagnostico.bat no comprueba %s" % marca
+
+
+def test_diagnostico_vuelca_a_log():
+    """B6: diagnostico.bat vuelca todo a diagnostico.log además de
+    mostrarlo en consola."""
+    contenido = leer_bat("diagnostico.bat").decode("ascii")
+    assert "diagnostico.log" in contenido
+    assert 'call "%~f0" --log' in contenido
+    assert 'type "%~dp0diagnostico.log"' in contenido

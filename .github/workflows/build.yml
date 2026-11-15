@@ -1,0 +1,87 @@
+---
+name: Build instalador
+
+# Compila el instalador de Windows (PyInstaller + Inno Setup) en
+# cada push de un tag v* (p. ej. v2.0.0) o al lanzarlo a mano desde
+# la pestaña Actions. El instalador queda como artefacto del
+# workflow; el release de GitHub lo publica el agente principal con
+# ese archivo adjunto.
+#
+# El build NO se puede probar en el servidor de desarrollo (Linux):
+# la primera corrida de este workflow es la prueba real. Si algo
+# falla aquí, el log de Actions dice qué paso falló.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias y PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.22.3
+
+      - name: Descargar ffmpeg (Gyan.dev, essentials)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-dl
+          $dir = (Get-ChildItem ffmpeg-dl -Directory | Select-Object -First 1).FullName
+          New-Item -ItemType Directory -Force -Path ffmpeg-bin | Out-Null
+          Copy-Item "$dir\bin\ffmpeg.exe" -Destination ffmpeg-bin\
+          Copy-Item "$dir\bin\ffprobe.exe" -Destination ffmpeg-bin\
+
+      - name: Descargar modelo YuNet (con verificación SHA-256)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx -OutFile face_detection_yunet_2023mar.onnx
+          $sha = (Get-FileHash face_detection_yunet_2023mar.onnx -Algorithm SHA256).Hash.ToLower()
+          if ($sha -ne "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4") { throw "SHA-256 del modelo YuNet no coincide: $sha" }
+
+      - name: Compilar con PyInstaller
+        run: pyinstaller clipia.spec
+
+      - name: Añadir ffmpeg y YuNet al paquete
+        shell: pwsh
+        run: |
+          Copy-Item ffmpeg-bin\ffmpeg.exe, ffmpeg-bin\ffprobe.exe, face_detection_yunet_2023mar.onnx -Destination dist\ClipIA\
+
+      - name: Prueba de humo (el .exe arranca)
+        shell: pwsh
+        run: |
+          $salida = & dist\ClipIA\ClipIA.exe --version
+          if ($salida -notmatch "ClipIA 2.0.0") { throw "El .exe no responde a --version: $salida" }
+
+      - name: Instalar Inno Setup
+        run: choco install innosetup -y
+
+      - name: Compilar instalador
+        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" instalador\clipia.iss'
+
+      - name: Tamaño del instalador
+        shell: pwsh
+        run: |
+          $f = Get-Item instalador\Output\ClipIA-Setup-2.0.0.exe
+          Write-Host ("Instalador: {0:N1} MB" -f ($f.Length / 1MB))
+          $d = (Get-ChildItem dist\ClipIA -Recurse | Measure-Object Length -Sum).Sum
+          Write-Host ("Carpeta dist: {0:N1} MB" -f ($d / 1MB))
+
+      - name: Subir instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClipIA-Setup-2.0.0
+          path: instalador/Output/ClipIA-Setup-2.0.0.exe
+          if-no-files-found: error
+---

@@ -18,6 +18,7 @@ import threading
 import tkinter as tk
 import traceback
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
@@ -731,18 +732,32 @@ class AppClipIA(ctk.CTk):
             self._ui(self._bloquear, False)
 
     def _generar_miniaturas(self) -> None:
-        """Genera una miniatura vertical por clip (corre en el hilo)."""
+        """Genera una miniatura vertical por clip, en paralelo.
+
+        Corre en el hilo de análisis. Cada miniatura es un ffmpeg
+        aparte (un solo fotograma), así que 4 en paralelo recortan el
+        tiempo total sin saturar la CPU. Si una falla, ese clip queda
+        sin miniatura y los demás siguen.
+        """
         if self._dir_miniaturas:
             shutil.rmtree(self._dir_miniaturas, ignore_errors=True)
         self._dir_miniaturas = tempfile.mkdtemp(prefix="clipia_miniaturas_")
-        for i, clip in enumerate(self.candidatos, start=1):
+
+        def generar(i_clip):
+            i, clip = i_clip
             ruta = os.path.join(self._dir_miniaturas, "clip%02d.jpg" % i)
             try:
                 core.generar_miniatura(
                     self.ruta_video, (clip["start"] + clip["end"]) / 2, ruta)
-                clip["miniatura"] = ruta
+                return i, ruta
             except Exception:
-                clip["miniatura"] = None
+                return i, None
+
+        with ThreadPoolExecutor(max_workers=4) as ejecutor:
+            # map conserva el orden: cada resultado vuelve a su clip.
+            for i, ruta in ejecutor.map(
+                    generar, enumerate(self.candidatos, start=1)):
+                self.candidatos[i - 1]["miniatura"] = ruta
 
     def _mostrar_clips(self, preservar_seleccion: bool = False) -> None:
         # B10: al agregar un clip manual se redibuja la lista; con

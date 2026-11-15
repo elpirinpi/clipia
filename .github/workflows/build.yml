@@ -1,7 +1,7 @@
 name: Build instalador
 
 # Compila el instalador de Windows (PyInstaller + Inno Setup) en
-# cada push de un tag v* (p. ej. v2.0.1) o al lanzarlo a mano desde
+# cada push de un tag v* (p. ej. v2.0.2) o al lanzarlo a mano desde
 # la pestaña Actions. El instalador queda como artefacto del
 # workflow; el release de GitHub lo publica el agente principal con
 # ese archivo adjunto.
@@ -55,6 +55,11 @@ jobs:
       - name: Compilar con PyInstaller
         run: pyinstaller clipia.spec
 
+      - name: Verificar assets empaquetados
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist\KellyAiClip\_internal\faster_whisper\assets\silero_vad_v6.onnx)) { throw "Falta silero_vad_v6.onnx en el paquete PyInstaller" }
+
       - name: Añadir ffmpeg y YuNet al paquete
         shell: pwsh
         run: |
@@ -64,7 +69,7 @@ jobs:
         shell: pwsh
         run: |
           $salida = & dist\KellyAiClip\KellyAiClip.exe --version
-          if ($salida -notmatch "KellyAiClip 2.0.1") { throw "El .exe no responde a --version: $salida" }
+          if ($salida -notmatch "KellyAiClip 2.0.2") { throw "El .exe no responde a --version: $salida" }
 
       - name: Instalar Inno Setup
         run: choco install innosetup -y
@@ -75,7 +80,7 @@ jobs:
       - name: Tamaño del instalador
         shell: pwsh
         run: |
-          $f = Get-Item instalador\Output\KellyAiClip-Setup-2.0.1.exe
+          $f = Get-Item instalador\Output\KellyAiClip-Setup-2.0.2.exe
           Write-Host ("Instalador: {0:N1} MB" -f ($f.Length / 1MB))
           $d = (Get-ChildItem dist\KellyAiClip -Recurse | Measure-Object Length -Sum).Sum
           Write-Host ("Carpeta dist: {0:N1} MB" -f ($d / 1MB))
@@ -83,12 +88,12 @@ jobs:
       - name: Subir instalador
         uses: actions/upload-artifact@v4
         with:
-          name: KellyAiClip-Setup-2.0.1
-          path: instalador/Output/KellyAiClip-Setup-2.0.1.exe
+          name: KellyAiClip-Setup-2.0.2
+          path: instalador/Output/KellyAiClip-Setup-2.0.2.exe
           if-no-files-found: error
 
       - name: Adjuntar instalador al release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: instalador/Output/KellyAiClip-Setup-2.0.1.exe
+          files: instalador/Output/KellyAiClip-Setup-2.0.2.exe

@@ -25,7 +25,7 @@ import customtkinter as ctk
 from PIL import Image
 
 import clipia_core as core
-from clipia import editor
+from clipia import editor, proyecto
 from clipia.cola import ColaExportacion, TrabajoExportacion, workers_efectivos
 from clipia.config import cargar_config, guardar_config
 from clipia.encoder import descripcion_encoder, detectar_encoder
@@ -817,6 +817,25 @@ class AppClipIA(ctk.CTk):
         )
         self.boton_analizar_cola.pack(side="left", padx=(8, 0))
 
+        ctk.CTkLabel(
+            izquierda, text="Proyecto",
+            font=ctk.CTkFont(size=13, weight="bold"), text_color=TEXTO,
+        ).pack(anchor="w", padx=16, pady=(16, 4))
+        fila_proyecto = ctk.CTkFrame(izquierda, fg_color="transparent")
+        fila_proyecto.pack(fill="x", padx=16, pady=(4, 4))
+        self.boton_guardar_proyecto = ctk.CTkButton(
+            fila_proyecto, text="Guardar proyecto", fg_color=TARJETA,
+            hover_color=BORDE, text_color=TEXTO, height=30, width=140,
+            command=self._guardar_proyecto,
+        )
+        self.boton_guardar_proyecto.pack(side="left")
+        self.boton_abrir_proyecto = ctk.CTkButton(
+            fila_proyecto, text="Abrir proyecto", fg_color=TARJETA,
+            hover_color=BORDE, text_color=TEXTO, height=30, width=130,
+            command=self._abrir_proyecto,
+        )
+        self.boton_abrir_proyecto.pack(side="left", padx=(8, 0))
+
         # --- Columna derecha: lista de clips ---
         derecha = ctk.CTkFrame(cuerpo, fg_color=PANEL, corner_radius=12)
         derecha.pack(side="left", fill="both", expand=True)
@@ -944,6 +963,8 @@ class AppClipIA(ctk.CTk):
         self.boton_pegar_url.configure(state=estado)
         self.boton_agregar_cola.configure(state=estado)
         self.boton_analizar_cola.configure(state=estado)
+        self.boton_guardar_proyecto.configure(state=estado)
+        self.boton_abrir_proyecto.configure(state=estado)
         self.check_rostros.configure(state=estado)
         self.entrada_archivo.configure(state=estado)
         self.entrada_url.configure(state=estado)
@@ -1145,6 +1166,139 @@ class AppClipIA(ctk.CTk):
             self._ui(self._ir_paso, 0)
         finally:
             self._ui(self._bloquear, False)
+
+    def _proyecto_actual(self) -> dict:
+        """El estado actual como proyecto (videos, clips, selección).
+
+        Solo los videos de los clips actuales (un video analizado
+        antes y reemplazado no se guarda). Las miniaturas no se
+        guardan: son archivos temporales que se regeneran al abrir.
+        """
+        videos = {c.get("video") for c in self.candidatos if c.get("video")}
+        if self.ruta_video:
+            videos.add(self.ruta_video)
+        return {
+            "videos": [{"ruta": ruta,
+                        "duracion": self.duracion_por_video.get(ruta, 0.0),
+                        "segmentos": self.segmentos_por_video.get(ruta, [])}
+                       for ruta in sorted(videos)],
+            "candidatos": [{k: v for k, v in clip.items()
+                            if k != "miniatura"}
+                           for clip in self.candidatos],
+            "seleccion": [v.get() for v in self.seleccion],
+            "carpeta_salida": self.carpeta_salida,
+        }
+
+    def _guardar_proyecto(self) -> None:
+        """Guarda el proyecto actual en un archivo .clipia."""
+        if not self.candidatos:
+            messagebox.showinfo(
+                "ClipIA", "No hay clips para guardar.\n"
+                "Analiza un video primero.")
+            return
+        ruta = filedialog.asksaveasfilename(
+            title="Guardar proyecto",
+            defaultextension=".clipia",
+            filetypes=[("Proyecto ClipIA", "*.clipia")])
+        if not ruta:
+            return
+        try:
+            proyecto.guardar_proyecto(ruta, self._proyecto_actual())
+        except OSError as error:
+            messagebox.showerror("ClipIA",
+                                 "No se pudo guardar el proyecto:\n%s"
+                                 % error)
+            return
+        self._estado("Proyecto guardado: %s" % os.path.basename(ruta), 1.0)
+        log.info("proyecto guardado en %s", ruta)
+
+    def _abrir_proyecto(self) -> None:
+        """Abre un proyecto .clipia guardado."""
+        if self.ocupado:
+            messagebox.showinfo(
+                "ClipIA", "Espera a que termine el trabajo en curso.")
+            return
+        ruta = filedialog.askopenfilename(
+            title="Abrir proyecto",
+            filetypes=[("Proyecto ClipIA", "*.clipia")])
+        if not ruta:
+            return
+        try:
+            datos = proyecto.cargar_proyecto(ruta)
+        except ValueError as error:
+            messagebox.showerror("ClipIA", str(error))
+            return
+        self._aplicar_proyecto(datos)
+
+    def _aplicar_proyecto(self, datos: dict) -> None:
+        """Restaura el estado desde un proyecto cargado.
+
+        Los videos que ya no están en su ruta se ofrecen para
+        localizarlos; si el usuario no los reubica, se conserva la
+        ruta vieja (la exportación de esos clips fallará con un
+        error claro) y se avisa en la barra de estado.
+        """
+        sin_localizar = []
+        for video in datos["videos"]:
+            if os.path.isfile(video["ruta"]):
+                continue
+            reubicar = messagebox.askyesno(
+                "ClipIA",
+                "El video «%s» ya no está en su ruta.\n"
+                "¿Quieres localizarlo?"
+                % os.path.basename(video["ruta"]))
+            nueva = None
+            if reubicar:
+                nueva = filedialog.askopenfilename(
+                    title="Localizar %s"
+                    % os.path.basename(video["ruta"]),
+                    filetypes=[("Videos", "*.mp4 *.mkv *.mov *.webm *.avi"),
+                               ("Todos los archivos", "*.*")])
+            if nueva:
+                anterior = video["ruta"]
+                video["ruta"] = nueva
+                for clip in datos["candidatos"]:
+                    if clip.get("video") == anterior:
+                        clip["video"] = nueva
+            else:
+                sin_localizar.append(os.path.basename(video["ruta"]))
+        self.segmentos_por_video = {v["ruta"]: v["segmentos"]
+                                    for v in datos["videos"]}
+        self.duracion_por_video = {v["ruta"]: v["duracion"]
+                                   for v in datos["videos"]}
+        self.candidatos = list(datos["candidatos"])
+        if datos["videos"]:
+            ultimo = datos["videos"][-1]
+            self.ruta_video = ultimo["ruta"]
+            self.duracion_video = ultimo["duracion"]
+            self.segmentos = ultimo["segmentos"]
+            self.etiqueta_video.configure(
+                text="Video: %s · %s"
+                % (os.path.basename(ultimo["ruta"]),
+                   core.formato_hora(ultimo["duracion"])))
+        carpeta = datos["carpeta_salida"]
+        if carpeta and os.path.isdir(carpeta):
+            self.carpeta_salida = carpeta
+            self.entrada_salida.delete(0, "end")
+            self.entrada_salida.insert(0, carpeta)
+        seleccion_previa = {
+            clave: datos["seleccion"][i]
+            for i, clave in enumerate(
+                _claves_seleccion(self.candidatos))}
+        self._mostrar_clips(seleccion_previa=seleccion_previa)
+        self._ir_paso(2)
+        mensaje = ("Proyecto abierto: %d clip(s) de %d video(s)."
+                   % (len(self.candidatos), len(datos["videos"])))
+        if sin_localizar:
+            mensaje += (" %d video(s) sin localizar: %s."
+                        % (len(sin_localizar), ", ".join(sin_localizar)))
+        self._estado(mensaje, 1.0)
+
+        def regenerar():
+            self._generar_miniaturas()
+            self._ui(self._mostrar_clips, True)
+
+        threading.Thread(target=regenerar, daemon=True).start()
 
     def _analizar_video(self, ruta: str, url: str, al_progreso) -> dict:
         """Analiza un video: descarga (si es URL), duración,

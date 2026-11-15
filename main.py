@@ -40,7 +40,7 @@ except ImportError:
     _DND_DISPONIBLE = False
 
 import clipia_core as core
-from clipia import editor, proyecto
+from clipia import __version__, editor, proyecto
 from clipia.cola import ColaExportacion, TrabajoExportacion, workers_efectivos
 from clipia.config import cargar_config, guardar_config
 from clipia.encoder import descripcion_encoder, detectar_encoder
@@ -2131,7 +2131,24 @@ class AppClipIA(DnDWrapper, ctk.CTk):
                                     self._abrir_archivo)
 
 
+def _preparar_ruta_ejecutable() -> None:
+    """En el instalador (PyInstaller), ffmpeg, ffprobe y el yt-dlp
+    externo van junto al .exe: añadir esa carpeta al PATH para que
+    los subprocesos los encuentren sin instalar nada más."""
+    if getattr(sys, "frozen", False):
+        carpeta = os.path.dirname(sys.executable)
+        path = os.environ.get("PATH", "")
+        if carpeta and carpeta not in path.split(os.pathsep):
+            os.environ["PATH"] = carpeta + os.pathsep + path
+
+
 def main() -> None:
+    if "--version" in sys.argv:
+        # Sin ventana: lo usa la prueba de humo del workflow de build
+        # para comprobar que el .exe arranca (imports resueltos).
+        print("ClipIA %s" % __version__)
+        return
+    _preparar_ruta_ejecutable()
     configurar_logging()
     app = AppClipIA()
     app.mainloop()

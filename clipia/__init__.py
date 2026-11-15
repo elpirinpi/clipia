@@ -3,6 +3,8 @@
 API pública del paquete; clipia_core.py re-exporta lo mismo para
 compatibilidad con main.py, test_pipeline.py y los tests existentes.
 """
+__version__ = "2.0.0"
+
 from .cache import (
     carpeta_cache,
     clave_archivo,

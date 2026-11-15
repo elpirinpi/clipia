@@ -11,10 +11,11 @@ salida/
 diagnostico.log
 *.log
 
-# Builds (Fase 4: PyInstaller + instalador)
+# Builds (Fase 4: PyInstaller + instalador). El .spec ES código
+# fuente (se versiona); solo se ignoran las salidas del build.
 dist/
 build/
-*.spec
+instalador/Output/
 
 # Sistema
 .DS_Store

@@ -13,6 +13,7 @@ import hashlib
 import logging
 import os
 import shutil
+import sys
 import tempfile
 import threading
 import urllib.error
@@ -48,6 +49,28 @@ def ruta_modelo_yunet() -> str:
     return os.path.join(carpeta_cache(), NOMBRE_MODELO_YUNET)
 
 
+def ruta_modelo_yunet_empaquetado() -> str | None:
+    """Ruta del modelo YuNet empaquetado con el instalador, si
+    existe y su SHA-256 coincide (junto al .exe; en one-file, en
+    _MEIPASS). None si no está empaquetado: la app lo descarga en
+    el primer uso."""
+    if not getattr(sys, "frozen", False):
+        return None
+    candidatos = [os.path.join(os.path.dirname(sys.executable),
+                               NOMBRE_MODELO_YUNET)]
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        candidatos.append(os.path.join(base, NOMBRE_MODELO_YUNET))
+    for ruta in candidatos:
+        if os.path.isfile(ruta):
+            try:
+                if _sha256_archivo(ruta) == SHA256_MODELO_YUNET:
+                    return ruta
+            except OSError:
+                continue
+    return None
+
+
 def _sha256_archivo(ruta: str) -> str:
     suma = hashlib.sha256()
     with open(ruta, "rb") as archivo:
@@ -65,6 +88,11 @@ def descargar_modelo_yunet(
     (sin red, suma incorrecta...): el llamador usa Haar entonces.
     `progreso` recibe un valor 0.0-1.0 mientras descarga.
     """
+    # Fase 4: el instalador empaqueta el modelo junto al .exe; si
+    # está ahí, no hace falta descargarlo (ni conexión).
+    empaquetado = ruta_modelo_yunet_empaquetado()
+    if empaquetado:
+        return empaquetado
     ruta = ruta_modelo_yunet()
     if os.path.isfile(ruta):
         try:

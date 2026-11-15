@@ -1,7 +1,27 @@
-# Historial de cambios de ClipIA
+# Historial de cambios de KellyAiClip
 
 Todos los cambios importantes de cada versión. El formato sigue
 [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
+
+## [2.0.1] - 15-11-2026
+
+- **Corregida la columna izquierda invisible en la app instalada**:
+  el panel de origen del video salía vacío (sin «Examinar…», sin
+  «Pegar URL», sin «Analizar video») porque un
+  `pack_propagate(False)` sobre el marco desplazable colapsaba su
+  layout interno a 1x1. Se quitó esa línea; la columna usa su
+  ancho fijo de 360 px como estaba previsto. Nuevo test de
+  regresión: los botones y campos de la columna deben medir más
+  de 1 px de ancho tras arrancar la app.
+- **Renombre a KellyAiClip**: título de la ventana, encabezado,
+  instalador (`KellyAiClip-Setup-2.0.1.exe`, en
+  `%LOCALAPPDATA%\Programs\KellyAiClip`), ejecutable
+  (`KellyAiClip.exe`) y `--version` (`KellyAiClip 2.0.1`). Las
+  carpetas internas (`%APPDATA%/ClipIA`, `%LOCALAPPDATA%/ClipIA`,
+  `Videos\ClipIA`) no cambian, así las instalaciones existentes
+  conservan su configuración, caché y modelo de voz.
+- **Créditos en la interfaz**: el pie de la ventana principal
+  muestra «Desarrollado por Kelly Benjamin de la Cruz».
 
 ## [2.0.0] - en desarrollo
 

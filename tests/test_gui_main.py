@@ -81,3 +81,31 @@ def test_al_cerrar_borra_miniaturas(app, tmp_path):
     app._al_cerrar()
     assert not os.path.exists(str(miniaturas))
     assert app._dir_miniaturas is None
+
+
+def test_columna_izquierda_visible_tras_arrancar(app):
+    """Regresión v2.0.1: la columna izquierda salía vacía en la app
+    instalada porque un pack_propagate(False) sobre el marco
+    desplazable colapsaba su layout interno y todos sus hijos medían
+    1x1. Tras arrancar, los controles de origen deben tener ancho
+    real. Se muestra la ventana antes de medir: retirada, el alto
+    del pie no se aplica y la última fila queda en 1x1 aunque el
+    layout esté bien."""
+    app.deiconify()
+    app.update()
+    for w in (app.entrada_archivo, app.boton_examinar, app.entrada_url,
+              app.boton_pegar_url, app.boton_analizar):
+        assert w.winfo_width() > 1, w
+
+
+def test_titulo_y_creditos_kellyaiclip(app):
+    """v2.0.1: la ventana se titula KellyAiClip y el pie muestra los
+    créditos del desarrollador con ancho real (el pie creció para
+    que quepan las 4 filas; con el alto anterior la etiqueta de
+    créditos quedaba en 1x1)."""
+    assert app.title() == "KellyAiClip — Estudio de clips"
+    assert (app.etiqueta_creditos.cget("text")
+            == "Desarrollado por Kelly Benjamin de la Cruz")
+    app.deiconify()
+    app.update()
+    assert app.etiqueta_creditos.winfo_width() > 1

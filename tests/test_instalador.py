@@ -33,7 +33,7 @@ def test_spec_es_python_valido_y_one_folder():
     assert "exclude_binaries=True" in fuente  # one-folder
     assert "COLLECT" in fuente
     assert "console=False" in fuente  # app de ventana
-    assert 'name="ClipIA"' in fuente
+    assert 'name="KellyAiClip"' in fuente
     assert 'collect_submodules("yt_dlp")' in fuente
     assert 'collect_data_files("tkinterdnd2")' in fuente
     assert 'collect_data_files("certifi")' in fuente
@@ -47,13 +47,13 @@ def test_iss_tiene_secciones_y_version():
     for seccion in ("[Setup]", "[Files]", "[Icons]", "[Run]",
                     "[Languages]"):
         assert seccion in contenido
-    assert '#define AppVersion "2.0.0"' in contenido
-    assert "OutputBaseFilename=ClipIA-Setup-{#AppVersion}" in contenido
-    assert 'Source: "..\\dist\\ClipIA\\*"' in contenido
+    assert '#define AppVersion "2.0.1"' in contenido
+    assert "OutputBaseFilename=KellyAiClip-Setup-{#AppVersion}" in contenido
+    assert 'Source: "..\\dist\\KellyAiClip\\*"' in contenido
     assert "PrivilegesRequired=lowest" in contenido
     assert "ArchitecturesAllowed=x64" in contenido
     assert "Spanish.isl" in contenido
-    assert "{localappdata}\\Programs\\ClipIA" in contenido
+    assert "{localappdata}\\Programs\\KellyAiClip" in contenido
 
 
 def test_iss_tiene_finales_de_linea_crlf():
@@ -82,7 +82,7 @@ def test_build_yml_valido_y_referencia_archivos():
     assert rostros.SHA256_MODELO_YUNET in pasos
     assert rostros.URL_MODELO_YUNET in pasos
     assert "ISCC.exe" in pasos
-    assert "ClipIA.exe --version" in pasos
+    assert "KellyAiClip.exe --version" in pasos
     assert "upload-artifact" in str(job["steps"])
     # Los archivos referenciados existen en el repo.
     for relativa in ("clipia.spec", "instalador/clipia.iss",
@@ -103,9 +103,9 @@ def test_gitignore_no_ignora_el_spec_pero_si_las_salidas():
 # --- Versión coherente -----------------------------------------------------
 
 def test_version_coherente_en_paquete_iss_y_workflow():
-    assert __version__ == "2.0.0"
-    assert '"2.0.0"' in _leer("instalador/clipia.iss")
-    assert "ClipIA-Setup-2.0.0" in _leer(".github/workflows/build.yml")
+    assert __version__ == "2.0.1"
+    assert '"2.0.1"' in _leer("instalador/clipia.iss")
+    assert "KellyAiClip-Setup-2.0.1" in _leer(".github/workflows/build.yml")
 
 
 def test_flag_version_imprime_y_sale_sin_ventana():
@@ -115,14 +115,14 @@ def test_flag_version_imprime_y_sale_sin_ventana():
         [sys.executable, os.path.join(RAIZ, "main.py"), "--version"],
         capture_output=True, text=True, timeout=120)
     assert resultado.returncode == 0
-    assert resultado.stdout.strip() == "ClipIA 2.0.0"
+    assert resultado.stdout.strip() == "KellyAiClip 2.0.1"
 
 
 # --- PATH del instalador ---------------------------------------------------
 
 def test_preparar_ruta_ejecutable_anade_la_carpeta_en_frozen(monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "executable", "/tmp/app/ClipIA.exe")
+    monkeypatch.setattr(sys, "executable", "/tmp/app/KellyAiClip.exe")
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
     app_mod._preparar_ruta_ejecutable()
     assert os.environ["PATH"].startswith("/tmp/app" + os.pathsep)
@@ -148,7 +148,7 @@ def test_modelo_yunet_empaquetado_se_usa_sin_descargar(
     modelo = app_dir / rostros.NOMBRE_MODELO_YUNET
     modelo.write_bytes(contenido)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    monkeypatch.setattr(sys, "executable", str(app_dir / "ClipIA.exe"))
+    monkeypatch.setattr(sys, "executable", str(app_dir / "KellyAiClip.exe"))
     monkeypatch.setattr(rostros, "SHA256_MODELO_YUNET",
                         hashlib.sha256(contenido).hexdigest())
     with mock.patch("urllib.request.urlopen",

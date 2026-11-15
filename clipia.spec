@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""Spec de PyInstaller para ClipIA (Fase 4).
+"""Spec de PyInstaller para KellyAiClip (Fase 4).
 
-One-folder, solo CPU: el .exe queda en dist/ClipIA/ClipIA.exe junto
+One-folder, solo CPU: el .exe queda en dist/KellyAiClip/KellyAiClip.exe junto
 a sus DLLs y datos. El instalador Inno Setup empaqueta esa carpeta
 (más ffmpeg.exe, ffprobe.exe y el modelo YuNet, que el workflow de
 GitHub Actions añade después del build).
@@ -58,7 +58,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="ClipIA",
+    name="KellyAiClip",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -82,5 +82,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="ClipIA",
+    name="KellyAiClip",
 )

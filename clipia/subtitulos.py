@@ -43,7 +43,7 @@ PRESETS_SUBTITULOS: dict[str, dict] = {
 ESTILO_DEFECTO = "Shorts clásico"
 
 _CABECERA_ASS = """[Script Info]
-Title: ClipIA
+Title: KellyAiClip
 ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920

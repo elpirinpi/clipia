@@ -1,4 +1,4 @@
-# ClipIA — Estudio de clips
+# KellyAiClip — Estudio de clips
 
 App de escritorio para Windows que convierte videos largos o directos en
 **clips cortos verticales con subtítulos**, listos para TikTok, Reels y
@@ -119,11 +119,11 @@ app sigue con la heurística; nunca se queda esperando.
 
 ## Instalación (recomendado: instalador)
 
-1. Descarga **`ClipIA-Setup-2.0.0.exe`** desde la página de
+1. Descarga **`KellyAiClip-Setup-2.0.1.exe`** desde la página de
    releases del repositorio
    (https://github.com/elpirinpi/clipia/releases).
 2. Haz doble clic y sigue el asistente. Se instala por usuario (sin
-   permisos de administrador) en `%LOCALAPPDATA%\Programs\ClipIA`,
+   permisos de administrador) en `%LOCALAPPDATA%\Programs\KellyAiClip`,
    con acceso directo en el menú Inicio. No necesitas instalar
    Python, ffmpeg ni nada más: todo va dentro.
 3. Si Windows SmartScreen avisa de que el instalador no tiene firma
@@ -133,7 +133,7 @@ app sigue con la heurística; nunca se queda esperando.
 ## Instalación alternativa (desde el código, para desarrollo)
 
 1. Descarga o copia la carpeta `clipia` a tu PC (por ejemplo,
-   `C:\ClipIA`).
+   `C:\KellyAiClip`).
 2. Haz doble clic en **`setup.bat`**. El instalador:
    - instala Python 3.12 (python.org) con winget si no lo tienes
      (si tu `python` es de MSYS2, setup.bat instala el de python.org
@@ -150,7 +150,7 @@ app sigue con la heurística; nunca se queda esperando.
 
 ## Cómo usarla
 
-1. Abre ClipIA desde el menú Inicio (o con **`run.bat`** si la
+1. Abre KellyAiClip desde el menú Inicio (o con **`run.bat`** si la
    instalaste desde el código).
 2. Elige un video con «Examinar…» o pega una URL de YouTube.
    También puedes arrastrar el video sobre la ventana o pegar la

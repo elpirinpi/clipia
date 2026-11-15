@@ -34,7 +34,7 @@ def cargar_proyecto(ruta: str) -> dict:
     """Lee y valida un proyecto. Devuelve el dict normalizado.
 
     Lanza ValueError si el archivo no existe, no es JSON válido o no
-    tiene la estructura de un proyecto ClipIA.
+    tiene la estructura de un proyecto KellyAiClip.
     """
     try:
         with open(ruta, encoding="utf-8") as archivo:
@@ -43,7 +43,7 @@ def cargar_proyecto(ruta: str) -> dict:
         raise ValueError("No se pudo leer el proyecto: %s" % error) \
             from error
     if not isinstance(datos, dict):
-        raise ValueError("El archivo no es un proyecto ClipIA válido.")
+        raise ValueError("El archivo no es un proyecto KellyAiClip válido.")
     if datos.get("version") != VERSION_PROYECTO:
         raise ValueError(
             "El proyecto es de otra versión (versión %s; esta app "

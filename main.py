@@ -1,5 +1,5 @@
 """
-ClipIA - app de escritorio para crear clips cortos verticales con IA.
+KellyAiClip - app de escritorio para crear clips cortos verticales con IA.
 
 Flujo: Cargar -> Analizar -> Clips -> Exportar.
 Todo corre 100% local: faster-whisper transcribe, el detector de momentos
@@ -150,11 +150,11 @@ class DialogoClipManual(ctk.CTkToplevel):
             fin = self._a_segundos(self.entrada_fin.get())
         except ValueError:
             messagebox.showerror(
-                "ClipIA", "Usa el formato m:ss, por ejemplo 1:30.")
+                "KellyAiClip", "Usa el formato m:ss, por ejemplo 1:30.")
             return
         if inicio < 0 or fin <= inicio or fin > self._duracion:
             messagebox.showerror(
-                "ClipIA",
+                "KellyAiClip",
                 "Revisa los tiempos: el fin debe ser mayor que el inicio "
                 "y no pasar de la duración del video.")
             return
@@ -843,7 +843,7 @@ def _claves_seleccion(clips: list[dict]) -> list:
 
 
 class AppClipIA(DnDWrapper, ctk.CTk):
-    """Ventana principal de ClipIA.
+    """Ventana principal de KellyAiClip.
 
     El mixin DnDWrapper añade drop_target_register/dnd_bind para el
     arrastrar y soltar; sin tkinterdnd2 es `object` y el DnD queda
@@ -853,7 +853,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
         ctk.set_appearance_mode("dark")
-        self.title("ClipIA — Estudio de clips")
+        self.title("KellyAiClip — Estudio de clips")
         self.geometry("1120x720")
         self.minsize(960, 620)
         self.configure(fg_color=BG)
@@ -954,7 +954,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
                                              ".webm", ".avi"))]
             if not videos:
                 messagebox.showinfo(
-                    "ClipIA", "Los archivos soltados no son videos.")
+                    "KellyAiClip", "Los archivos soltados no son videos.")
                 return
             if len(videos) == 1 and not self.cola_videos:
                 self.entrada_archivo.delete(0, "end")
@@ -979,7 +979,8 @@ class AppClipIA(DnDWrapper, ctk.CTk):
         barra.pack_propagate(False)
 
         ctk.CTkLabel(
-            barra, text="ClipIA", font=ctk.CTkFont(size=24, weight="bold"),
+            barra, text="KellyAiClip",
+            font=ctk.CTkFont(size=24, weight="bold"),
             text_color=TEXTO,
         ).pack(side="left", padx=(20, 6), pady=12)
         ctk.CTkLabel(
@@ -1012,7 +1013,6 @@ class AppClipIA(DnDWrapper, ctk.CTk):
             cuerpo, fg_color=PANEL, corner_radius=12, width=360,
             scrollbar_button_color=BORDE)
         izquierda.pack(side="left", fill="y", padx=(0, 12))
-        izquierda.pack_propagate(False)
 
         ctk.CTkLabel(
             izquierda, text="Origen del video",
@@ -1176,7 +1176,10 @@ class AppClipIA(DnDWrapper, ctk.CTk):
         self.etiqueta_vacia.pack(pady=60)
 
     def _construir_pie(self) -> None:
-        pie = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=0, height=96)
+        # Alto 132: estado + barra + codificador + créditos (4 filas)
+        # más el pady del marco izquierdo; con 96 la última fila no
+        # cabía y el packer la dejaba en 1x1.
+        pie = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=0, height=132)
         pie.pack(fill="x")
         pie.pack_propagate(False)
 
@@ -1194,6 +1197,10 @@ class AppClipIA(DnDWrapper, ctk.CTk):
             izquierda_pie, text="Codificador: detectando…",
             font=ctk.CTkFont(size=11), text_color=SILENCIO, anchor="w")
         self.etiqueta_encoder.pack(anchor="w", pady=(4, 0))
+        self.etiqueta_creditos = ctk.CTkLabel(
+            izquierda_pie, text="Desarrollado por Kelly Benjamin de la Cruz",
+            font=ctk.CTkFont(size=11), text_color=SILENCIO, anchor="w")
+        self.etiqueta_creditos.pack(anchor="w", pady=(2, 0))
 
         self.boton_exportar = ctk.CTkButton(
             pie, text="Descargar clips", fg_color=ROJO, hover_color=ROJO_HOVER,
@@ -1315,12 +1322,12 @@ class AppClipIA(DnDWrapper, ctk.CTk):
         try:
             texto = self.clipboard_get().strip()
         except tk.TclError:
-            messagebox.showinfo("ClipIA",
+            messagebox.showinfo("KellyAiClip",
                                 "El portapapeles no tiene texto.")
             return
         if not texto.startswith(("http://", "https://")):
             messagebox.showinfo(
-                "ClipIA",
+                "KellyAiClip",
                 "El portapapeles no tiene una URL (debe empezar por "
                 "http:// o https://).")
             return
@@ -1357,7 +1364,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
         except OSError:
             alternativa = _crear_carpeta_salida()
             messagebox.showwarning(
-                "ClipIA",
+                "KellyAiClip",
                 "No se pudo usar la carpeta:\n%s\n\n"
                 "Los clips se guardarán en:\n%s"
                 % (self.carpeta_salida, alternativa))
@@ -1411,7 +1418,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
                       if v["estado"] in ("pendiente", "error")]
         if not pendientes:
             messagebox.showinfo(
-                "ClipIA",
+                "KellyAiClip",
                 "La cola está vacía o ya está analizada.\n"
                 "Usa «Añadir videos…» para agregar videos.")
             return
@@ -1461,7 +1468,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
             detalle = "%s: %s" % (type(error).__name__, error)
             log.exception("error en la cola de videos")
             self._ui(self._estado, "Error: %s" % detalle, 0)
-            self._ui(messagebox.showerror, "ClipIA", detalle)
+            self._ui(messagebox.showerror, "KellyAiClip", detalle)
             self._ui(self._ir_paso, 0)
         finally:
             self._ui(self._bloquear, False)
@@ -1492,19 +1499,19 @@ class AppClipIA(DnDWrapper, ctk.CTk):
         """Guarda el proyecto actual en un archivo .clipia."""
         if not self.candidatos:
             messagebox.showinfo(
-                "ClipIA", "No hay clips para guardar.\n"
+                "KellyAiClip", "No hay clips para guardar.\n"
                 "Analiza un video primero.")
             return
         ruta = filedialog.asksaveasfilename(
             title="Guardar proyecto",
             defaultextension=".clipia",
-            filetypes=[("Proyecto ClipIA", "*.clipia")])
+            filetypes=[("Proyecto KellyAiClip", "*.clipia")])
         if not ruta:
             return
         try:
             proyecto.guardar_proyecto(ruta, self._proyecto_actual())
         except OSError as error:
-            messagebox.showerror("ClipIA",
+            messagebox.showerror("KellyAiClip",
                                  "No se pudo guardar el proyecto:\n%s"
                                  % error)
             return
@@ -1515,17 +1522,17 @@ class AppClipIA(DnDWrapper, ctk.CTk):
         """Abre un proyecto .clipia guardado."""
         if self.ocupado:
             messagebox.showinfo(
-                "ClipIA", "Espera a que termine el trabajo en curso.")
+                "KellyAiClip", "Espera a que termine el trabajo en curso.")
             return
         ruta = filedialog.askopenfilename(
             title="Abrir proyecto",
-            filetypes=[("Proyecto ClipIA", "*.clipia")])
+            filetypes=[("Proyecto KellyAiClip", "*.clipia")])
         if not ruta:
             return
         try:
             datos = proyecto.cargar_proyecto(ruta)
         except ValueError as error:
-            messagebox.showerror("ClipIA", str(error))
+            messagebox.showerror("KellyAiClip", str(error))
             return
         self._aplicar_proyecto(datos)
 
@@ -1542,7 +1549,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
             if os.path.isfile(video["ruta"]):
                 continue
             reubicar = messagebox.askyesno(
-                "ClipIA",
+                "KellyAiClip",
                 "El video «%s» ya no está en su ruta.\n"
                 "¿Quieres localizarlo?"
                 % os.path.basename(video["ruta"]))
@@ -1673,7 +1680,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
         url = self.entrada_url.get().strip()
         if not ruta and not url:
             messagebox.showinfo(
-                "ClipIA",
+                "KellyAiClip",
                 "Elige un archivo de video o pega una URL de YouTube.")
             return
         self._asegurar_carpeta_salida()
@@ -1699,7 +1706,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
             detalle = _detalle_error(error)
             log.exception("error en el análisis del video")
             self._ui(self._estado, "Error: %s" % detalle, 0)
-            self._ui(messagebox.showerror, "ClipIA", detalle)
+            self._ui(messagebox.showerror, "KellyAiClip", detalle)
             self._ui(self._ir_paso, 0)
         finally:
             self._ui(self._bloquear, False)
@@ -1838,7 +1845,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
     def _crear_clip_manual(self) -> None:
         if not self.ruta_video:
             messagebox.showinfo(
-                "ClipIA", "Primero carga y analiza un video.")
+                "KellyAiClip", "Primero carga y analiza un video.")
             return
 
         def agregar(inicio, fin):
@@ -1860,7 +1867,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
             return
         if not self.candidatos:
             messagebox.showinfo(
-                "ClipIA", "Primero carga y analiza un video.")
+                "KellyAiClip", "Primero carga y analiza un video.")
             return
         self._bloquear(True)
         self._estado("Comprobando la IA local…", 0)
@@ -1876,13 +1883,13 @@ class AppClipIA(DnDWrapper, ctk.CTk):
     def _hilo_reordenar_ollama(self, seleccion_previa: dict) -> None:
         try:
             if not ollama_disponible():
-                self._ui(messagebox.showinfo, "ClipIA",
+                self._ui(messagebox.showinfo, "KellyAiClip",
                          INSTRUCCIONES_INSTALACION)
                 self._ui(self._estado, "Listo.", 0)
                 return
             modelo = self.config.get("ollama_modelo", MODELO_DEFECTO)
             if not modelo_disponible(modelo):
-                self._ui(messagebox.showinfo, "ClipIA",
+                self._ui(messagebox.showinfo, "KellyAiClip",
                          INSTRUCCIONES_MODELO % (modelo, modelo))
                 self._ui(self._estado, "Listo.", 0)
                 return
@@ -1904,7 +1911,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
             detalle = "%s: %s" % (type(error).__name__, error)
             log.exception("error al reordenar con Ollama")
             self._ui(self._estado, "Error: %s" % detalle, 0)
-            self._ui(messagebox.showerror, "ClipIA", detalle)
+            self._ui(messagebox.showerror, "KellyAiClip", detalle)
         finally:
             self._ui(self._bloquear, False)
 
@@ -1918,7 +1925,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
         """Abre el editor de clip (sliders, onda, transcripción)."""
         if self.ocupado:
             messagebox.showinfo(
-                "ClipIA", "Espera a que termine el trabajo en curso.")
+                "KellyAiClip", "Espera a que termine el trabajo en curso.")
             return
         video = clip.get("video") or self.ruta_video
         if not video:
@@ -1965,7 +1972,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
     def _vista_previa(self, clip: dict) -> None:
         if self.ocupado:
             messagebox.showinfo(
-                "ClipIA", "Espera a que termine el trabajo en curso.")
+                "KellyAiClip", "Espera a que termine el trabajo en curso.")
             return
         if not self.ruta_video:
             return
@@ -2014,7 +2021,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
             detalle = "%s: %s" % (type(error).__name__, error)
             log.exception("error en la vista previa")
             self._ui(self._estado, "Error: %s" % detalle, 0)
-            self._ui(messagebox.showerror, "ClipIA", detalle)
+            self._ui(messagebox.showerror, "KellyAiClip", detalle)
         finally:
             self._ui(self._bloquear, False)
 
@@ -2043,7 +2050,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
                                        strict=True)
                     if v.get()]
         if not elegidos:
-            messagebox.showinfo("ClipIA", "Selecciona al menos un clip.")
+            messagebox.showinfo("KellyAiClip", "Selecciona al menos un clip.")
             return
         self._asegurar_carpeta_salida()
         self._bloquear(True)
@@ -2127,7 +2134,7 @@ class AppClipIA(DnDWrapper, ctk.CTk):
             detalle = "%s: %s" % (type(error).__name__, error)
             log.exception("error en la exportación")
             self._ui(self._estado, "Error: %s" % detalle, 0)
-            self._ui(messagebox.showerror, "ClipIA", detalle)
+            self._ui(messagebox.showerror, "KellyAiClip", detalle)
         finally:
             self._ui(self._bloquear, False)
             self._ui(self.boton_cancelar.configure, state="disabled")
@@ -2153,7 +2160,7 @@ def main() -> None:
     if "--version" in sys.argv:
         # Sin ventana: lo usa la prueba de humo del workflow de build
         # para comprobar que el .exe arranca (imports resueltos).
-        print("ClipIA %s" % __version__)
+        print("KellyAiClip %s" % __version__)
         return
     _preparar_ruta_ejecutable()
     configurar_logging()

@@ -148,11 +148,19 @@ def test_expresion_rostros_interpola_entre_muestras():
     assert expr.endswith(",0,iw-1080)")
 
 
-def test_expresion_rostros_maximo_12_puntos():
+def test_expresion_rostros_maximo_45_puntos():
+    # Fase 2: el tope sube de 12 a 45 puntos (crop no admite sendcmd).
+    muestras = [(float(i), 0.1 + 0.01 * i) for i in range(60)]
+    expr = _expresion_rostros(muestras, 1080)
+    # 45 puntos -> 44 interpolaciones anidadas.
+    assert expr.count("if(lt(t,") == 44
+
+
+def test_expresion_rostros_usa_20_puntos_sin_recortar():
+    # Con 20 muestras ya no se recorta a 12.
     muestras = [(float(i), 0.1 + 0.03 * i) for i in range(20)]
     expr = _expresion_rostros(muestras, 1080)
-    # 12 puntos -> 11 interpolaciones anidadas.
-    assert expr.count("if(lt(t,") == 11
+    assert expr.count("if(lt(t,") == 19
 
 
 # -- DialogoClipManual._a_segundos ----------------------------------------

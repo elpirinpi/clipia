@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests de GUI del hilo de exportación (B3).
 
 Necesitan pantalla: en Linux correr con xvfb-run -a; en Windows (CI)

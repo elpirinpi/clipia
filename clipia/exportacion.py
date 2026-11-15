@@ -1,16 +1,19 @@
-# -*- coding: utf-8 -*-
 """Exportación de clips verticales con ffmpeg."""
 import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 
 from .rostros import _expresion_rostros
 
 
-def exportar_clip(ruta_video, inicio, fin, ruta_ass, ruta_salida,
-                  progreso=None, rostros=None, ancho=1080, alto=1920,
-                  con_subtitulos=True):
+def exportar_clip(ruta_video: str, inicio: float, fin: float,
+                  ruta_ass: str | None, ruta_salida: str,
+                  progreso: Callable[[float], None] | None = None,
+                  rostros: list[tuple[float, float]] | None = None,
+                  ancho: int = 1080, alto: int = 1920,
+                  con_subtitulos: bool = True) -> str:
     """Exporta un clip vertical con subtítulos quemados.
 
     `progreso` es una función opcional que recibe un valor 0.0-1.0.
@@ -90,8 +93,8 @@ def exportar_clip(ruta_video, inicio, fin, ruta_ass, ruta_salida,
     return ruta_salida
 
 
-def generar_miniatura(ruta_video, instante, ruta_salida,
-                      ancho=135, alto=240):
+def generar_miniatura(ruta_video: str, instante: float, ruta_salida: str,
+                      ancho: int = 135, alto: int = 240) -> str:
     """Guarda un fotograma vertical (9:16) del `instante` como imagen."""
     filtro = ("scale=1080:1920:force_original_aspect_ratio=increase,"
               "crop=1080:1920,scale=%d:%d" % (ancho, alto))
@@ -102,8 +105,11 @@ def generar_miniatura(ruta_video, instante, ruta_salida,
     return ruta_salida
 
 
-def generar_vista_previa(ruta_video, inicio, fin, ruta_salida,
-                         rostros=None, progreso=None):
+def generar_vista_previa(ruta_video: str, inicio: float, fin: float,
+                         ruta_salida: str,
+                         rostros: list[tuple[float, float]] | None = None,
+                         progreso: Callable[[float], None] | None = None
+                         ) -> str:
     """Genera una vista previa rápida (540x960, sin subtítulos)."""
     return exportar_clip(ruta_video, inicio, fin, None, ruta_salida,
                          progreso=progreso, rostros=rostros,

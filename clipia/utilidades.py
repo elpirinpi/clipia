@@ -1,15 +1,14 @@
-# -*- coding: utf-8 -*-
 """Utilidades de ClipIA: formatos de tiempo y duración de video."""
 import subprocess
 
 
-def formato_hora(segundos):
+def formato_hora(segundos: float) -> str:
     """Convierte segundos a 'M:SS' (ej. 52 -> '0:52')."""
     segundos = max(0, int(round(segundos)))
     return "%d:%02d" % (segundos // 60, segundos % 60)
 
 
-def formato_ass(segundos):
+def formato_ass(segundos: float) -> str:
     """Convierte segundos a formato de tiempo ASS 'H:MM:SS.cc'."""
     segundos = max(0.0, float(segundos))
     h = int(segundos // 3600)
@@ -22,7 +21,7 @@ def formato_ass(segundos):
     return "%d:%02d:%02d.%02d" % (h, m, s, cs)
 
 
-def obtener_duracion(ruta_video):
+def obtener_duracion(ruta_video: str) -> float:
     """Duración en segundos de un video, usando ffprobe.
 
     B8: algunos MKV/WebM devuelven format=duration "N/A" y el float()

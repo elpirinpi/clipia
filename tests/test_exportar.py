@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
 """Tests de exportar_clip (B9): -map, ASS en cwd temporal, sin audio."""
 import json
 import subprocess
 import wave
 
 import numpy as np
+from conftest import video_sintetico
 
 import clipia_core as core
-from conftest import video_sintetico
 
 
 def flujos(ruta):

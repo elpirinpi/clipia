@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests de requirements.txt (B7 y regla de versiones fijadas)."""
 import os
 

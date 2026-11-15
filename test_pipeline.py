@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Prueba de punta a punta de ClipIA (sin interfaz gráfica).
 
@@ -20,7 +19,7 @@ import time
 import clipia_core as core
 
 
-def verificar_clip(ruta):
+def verificar_clip(ruta: str) -> dict:
     """Verifica con ffprobe que el clip es un MP4 vertical válido."""
     resultado = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
@@ -43,7 +42,8 @@ def verificar_clip(ruta):
     }
 
 
-def extraer_fotograma(ruta_video, segundo, ruta_salida):
+def extraer_fotograma(ruta_video: str, segundo: float,
+                      ruta_salida: str) -> str:
     """Extrae un fotograma en el segundo indicado (para revisar subtítulos)."""
     subprocess.run(
         ["ffmpeg", "-y", "-v", "error", "-ss", "%.2f" % segundo,
@@ -53,7 +53,7 @@ def extraer_fotograma(ruta_video, segundo, ruta_salida):
     return ruta_salida
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Prueba de ClipIA")
     parser.add_argument("--video", required=True, help="Video de entrada")
     parser.add_argument("--salida", required=True,
@@ -102,7 +102,8 @@ def main():
         return 1
 
     # 3. Exportación
-    print("\n[3/4] Exportando %d clip(s)..." % min(args.clips, len(candidatos)))
+    print("\n[3/4] Exportando %d clip(s)..."
+          % min(args.clips, len(candidatos)))
     t0 = time.time()
     exportados = []
     for i, clip in enumerate(candidatos[:args.clips], 1):

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Detección de rostros (OpenCV) — para que el recorte siga la cara.
 
 Los fotogramas se extraen con ffmpeg (v1.1.2): nunca usar
@@ -9,9 +8,13 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
 
 
-def detectar_rostros(ruta_video, inicio, fin, intervalo=2.0, progreso=None):
+def detectar_rostros(ruta_video: str, inicio: float, fin: float,
+                     intervalo: float = 2.0,
+                     progreso: Callable[[float], None] | None = None
+                     ) -> list[tuple[float, float]]:
     """Detecta la posición horizontal de la cara principal en un fragmento.
 
     Extrae fotogramas con ffmpeg (el mismo programa que ya usa la app
@@ -81,7 +84,8 @@ def detectar_rostros(ruta_video, inicio, fin, intervalo=2.0, progreso=None):
     return muestras
 
 
-def _expresion_rostros(muestras, ancho_salida):
+def _expresion_rostros(muestras: list[tuple[float, float]],
+                       ancho_salida: int) -> str | None:
     """Expresión ffmpeg para el x del recorte siguiendo las `muestras`.
 
     `muestras` es la lista de (t, x) de detectar_rostros (t en segundos

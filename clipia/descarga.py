@@ -1,9 +1,11 @@
-# -*- coding: utf-8 -*-
 """Descarga de YouTube con yt-dlp (máximo 1080p)."""
 import os
+from collections.abc import Callable
 
 
-def descargar_youtube(url, carpeta_destino, progreso=None):
+def descargar_youtube(url: str, carpeta_destino: str,
+                      progreso: Callable[[float], None] | None = None
+                      ) -> str:
     """Descarga un video de YouTube en MP4, máximo 1080p.
 
     Devuelve la ruta del archivo descargado.

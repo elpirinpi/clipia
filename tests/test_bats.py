@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests estáticos de los .bat (B4, B5, B6).
 
 Los .bat no se pueden ejecutar en este Linux: se verifica su contenido
@@ -32,16 +31,17 @@ def test_setup_se_detiene_tras_instalar_python():
     misma sesión (PATH sin refrescar); corta diciendo que se vuelva a
     ejecutar setup.bat."""
     ls = lineas("setup.bat")
-    i_install = next(i for i, l in enumerate(ls)
-                     if "winget install" in l and "Python.Python.3.12" in l)
-    i_error = next(i for i, l in enumerate(ls)
-                   if l.strip() == ":error_python")
+    i_install = next(i for i, linea in enumerate(ls)
+                     if "winget install" in linea
+                     and "Python.Python.3.12" in linea)
+    i_error = next(i for i, linea in enumerate(ls)
+                   if linea.strip() == ":error_python")
     tramo = ls[i_install:i_error]
-    assert any("exit /b 0" in l for l in tramo), \
+    assert any("exit /b 0" in linea for linea in tramo), \
         "setup.bat no se detiene tras instalar Python"
-    assert any("vuelve a ejecutar setup.bat" in l for l in tramo), \
+    assert any("vuelve a ejecutar setup.bat" in linea for linea in tramo), \
         "falta el mensaje de volver a ejecutar setup.bat"
-    assert not any("goto :paso_ffmpeg" in l for l in tramo), \
+    assert not any("goto :paso_ffmpeg" in linea for linea in tramo), \
         "setup.bat sigue al paso ffmpeg tras instalar Python"
 
 
@@ -52,12 +52,12 @@ def test_setup_comprueba_errorlevel_de_ffmpeg_y_deno():
     ls = lineas("setup.bat")
 
     def siguiente_errorlevel(marca, etiqueta):
-        i = next(i for i, l in enumerate(ls) if marca in l)
+        i = next(i for i, linea in enumerate(ls) if marca in linea)
         cercanas = ls[i:i + 3]
-        assert any("if errorlevel 1 goto %s" % etiqueta in l
-                   for l in cercanas), \
+        assert any("if errorlevel 1 goto %s" % etiqueta in linea
+                   for linea in cercanas), \
             "falta el chequeo de errorlevel tras %s" % marca
-        assert any(l.strip() == etiqueta for l in ls), \
+        assert any(linea.strip() == etiqueta for linea in ls), \
             "falta la etiqueta %s" % etiqueta
 
     siguiente_errorlevel("Gyan.FFmpeg", ":error_ffmpeg")
@@ -75,10 +75,11 @@ def test_run_verifica_todas_las_dependencias():
             "run.bat no verifica %s" % modulo
     # El chequeo debe ir a instalar las dependencias si falta alguna.
     ls = lineas("run.bat")
-    i_check = next(i for i, l in enumerate(ls)
-                   if "import customtkinter" in l and "faster_whisper" in l)
-    assert any("if errorlevel 1 goto :instalar_deps" in l
-               for l in ls[i_check:i_check + 2]), \
+    i_check = next(i for i, linea in enumerate(ls)
+                   if "import customtkinter" in linea
+                   and "faster_whisper" in linea)
+    assert any("if errorlevel 1 goto :instalar_deps" in linea
+               for linea in ls[i_check:i_check + 2]), \
         "el chequeo de dependencias no lleva a :instalar_deps"
 
 
@@ -91,10 +92,10 @@ def test_diagnostico_usa_el_mismo_interprete_que_run():
     assert '%PY% -c "import customtkinter' in contenido
     assert '%PY% -c "import faster_whisper' in contenido
     # Ningún chequeo de módulo con `python` a secas.
-    for l in lineas("diagnostico.bat"):
-        if l.startswith("python -c"):
+    for linea in lineas("diagnostico.bat"):
+        if linea.startswith("python -c"):
             raise AssertionError(
-                "diagnostico.bat usa `python` a secas: %r" % l)
+                "diagnostico.bat usa `python` a secas: %r" % linea)
 
 
 def test_diagnostico_comprueba_cv2_pil_numpy_ctranslate2_ffprobe_deno():

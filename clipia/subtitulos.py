@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Subtítulos ASS estilo Shorts."""
 from .momentos import _frases_de_segmentos
 from .utilidades import formato_ass
 
-PLANTILLA_ASS = """[Script Info]
+PLANTILLA_ASS: str = """[Script Info]
 Title: ClipIA
 ScriptType: v4.00+
 PlayResX: 1080
@@ -21,7 +20,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
 
-def _escapar_ruta_subtitulos(ruta):
+def _escapar_ruta_subtitulos(ruta: str) -> str:
     """Escapa una ruta para el filtro subtitles de ffmpeg.
 
     En Windows las rutas con unidad (C:\\...) rompen el filtro si no se
@@ -35,7 +34,8 @@ def _escapar_ruta_subtitulos(ruta):
     return ruta
 
 
-def _fragmentos_subtitulo(frase, max_palabras=7):
+def _fragmentos_subtitulo(frase: dict, max_palabras: int = 7
+                          ) -> list[tuple[float, float, str]]:
     """Divide una frase en fragmentos cortos para subtítulos legibles."""
     palabras = frase.get("words") or []
     if not palabras:
@@ -49,7 +49,8 @@ def _fragmentos_subtitulo(frase, max_palabras=7):
     return fragmentos
 
 
-def generar_subtitulos_ass(segmentos, inicio_clip, fin_clip, ruta_salida):
+def generar_subtitulos_ass(segmentos: list[dict], inicio_clip: float,
+                           fin_clip: float, ruta_salida: str) -> str:
     """Genera un archivo .ass con los subtítulos del clip.
 
     Tiempos relativos al inicio del clip. Estilo Shorts: negrita, blanco

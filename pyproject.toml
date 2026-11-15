@@ -1,0 +1,22 @@
+[tool.ruff]
+line-length = 79
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    # El proyecto usa formato % de forma consistente en todo el código;
+    # no se convierte a f-strings.
+    "UP031",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# La plantilla ASS tiene líneas de formato que no se pueden partir
+# (son datos del formato, no código).
+"clipia/subtitulos.py" = ["E501"]
+"tests/*.py" = [
+    "B011",  # assert False / raise en tests
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests de descarga de YouTube (B1, B2). Sin red: yt-dlp va mockeado."""
 from unittest import mock
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Configuración común de pytest: la raíz del repo queda en sys.path."""
 import os
 import subprocess

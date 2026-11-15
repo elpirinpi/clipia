@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 ClipIA - app de escritorio para crear clips cortos verticales con IA.
 
@@ -15,8 +14,9 @@ import subprocess
 import sys
 import tempfile
 import threading
-import traceback
 import tkinter as tk
+import traceback
+from collections.abc import Callable
 from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
@@ -45,7 +45,7 @@ PASOS = ["Cargar", "Analizar", "Clips", "Exportar"]
 class DialogoClipManual(ctk.CTkToplevel):
     """Ventana pequeña para crear un clip manual (inicio y fin)."""
 
-    def __init__(self, padre, duracion, al_agregar):
+    def __init__(self, padre, duracion: float, al_agregar) -> None:
         super().__init__(padre)
         self.title("Crear clip")
         self.geometry("360x230")
@@ -85,7 +85,7 @@ class DialogoClipManual(ctk.CTkToplevel):
         ).pack(pady=(16, 8))
 
     @staticmethod
-    def _a_segundos(texto):
+    def _a_segundos(texto: str) -> float:
         texto = texto.strip()
         if ":" in texto:
             partes = texto.split(":")
@@ -97,12 +97,13 @@ class DialogoClipManual(ctk.CTkToplevel):
             raise ValueError
         return float(texto)
 
-    def _agregar(self):
+    def _agregar(self) -> None:
         try:
             inicio = self._a_segundos(self.entrada_inicio.get())
             fin = self._a_segundos(self.entrada_fin.get())
         except ValueError:
-            messagebox.showerror("ClipIA", "Usa el formato m:ss, por ejemplo 1:30.")
+            messagebox.showerror(
+                "ClipIA", "Usa el formato m:ss, por ejemplo 1:30.")
             return
         if inicio < 0 or fin <= inicio or fin > self._duracion:
             messagebox.showerror(
@@ -114,7 +115,7 @@ class DialogoClipManual(ctk.CTkToplevel):
         self.destroy()
 
 
-def _crear_carpeta_salida():
+def _crear_carpeta_salida() -> str:
     """Devuelve una carpeta de salida usable.
 
     Intenta en orden: Videos/ClipIA, ~/ClipIA y una carpeta 'salida'
@@ -139,7 +140,10 @@ def _crear_carpeta_salida():
     return candidatos[0]
 
 
-def _detectar_con_limite(ruta_video, inicio, fin, progreso, timeout=60):
+def _detectar_con_limite(
+    ruta_video: str, inicio: float, fin: float,
+    progreso: Callable[[float], None] | None, timeout: int = 60,
+) -> list[tuple[float, float]]:
     """Detecta rostros con un límite de tiempo.
 
     Si la detección tarda más de `timeout` segundos (por ejemplo, un
@@ -165,7 +169,7 @@ def _detectar_con_limite(ruta_video, inicio, fin, progreso, timeout=60):
     return resultado
 
 
-def _limpiar_temps_vista_previa():
+def _limpiar_temps_vista_previa() -> None:
     """Borra los temporales de vistas previas y miniaturas de sesiones
     anteriores (B10: quedaban huérfanos al cerrar la app)."""
     base = tempfile.gettempdir()
@@ -181,7 +185,7 @@ def _limpiar_temps_vista_previa():
 class AppClipIA(ctk.CTk):
     """Ventana principal de ClipIA."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         ctk.set_appearance_mode("dark")
         self.title("ClipIA — Estudio de clips")
@@ -214,7 +218,7 @@ class AppClipIA(ctk.CTk):
 
     # -- Construcción de la interfaz -------------------------------------
 
-    def _construir_encabezado(self):
+    def _construir_encabezado(self) -> None:
         barra = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=0, height=64)
         barra.pack(fill="x")
         barra.pack_propagate(False)
@@ -242,7 +246,7 @@ class AppClipIA(ctk.CTk):
             etiqueta.pack(side="left", padx=3)
             self._etiquetas_pasos.append(etiqueta)
 
-    def _construir_cuerpo(self):
+    def _construir_cuerpo(self) -> None:
         cuerpo = ctk.CTkFrame(self, fg_color="transparent")
         cuerpo.pack(fill="both", expand=True, padx=16, pady=16)
 
@@ -258,7 +262,8 @@ class AppClipIA(ctk.CTk):
         ).pack(anchor="w", padx=16, pady=(16, 8))
 
         self.entrada_archivo = ctk.CTkEntry(
-            izquierda, placeholder_text="Archivo de video (mp4, mkv, mov, webm)",
+            izquierda,
+            placeholder_text="Archivo de video (mp4, mkv, mov, webm)",
             height=36)
         self.entrada_archivo.pack(fill="x", padx=16)
         self.boton_examinar = ctk.CTkButton(
@@ -344,11 +349,12 @@ class AppClipIA(ctk.CTk):
 
         self.etiqueta_vacia = ctk.CTkLabel(
             self.lista_clips,
-            text="Aquí aparecerán los clips.\nCarga un video y pulsa «Analizar video».",
+            text="Aquí aparecerán los clips.\n"
+                 "Carga un video y pulsa «Analizar video».",
             font=ctk.CTkFont(size=13), text_color=SILENCIO, justify="center")
         self.etiqueta_vacia.pack(pady=60)
 
-    def _construir_pie(self):
+    def _construir_pie(self) -> None:
         pie = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=0, height=76)
         pie.pack(fill="x")
         pie.pack_propagate(False)
@@ -372,11 +378,11 @@ class AppClipIA(ctk.CTk):
 
     # -- Utilidades de interfaz ------------------------------------------
 
-    def _ui(self, funcion, *args, **kwargs):
+    def _ui(self, funcion: Callable, *args, **kwargs) -> None:
         """Ejecuta `funcion` en el hilo principal (seguro desde hilos)."""
         self._cola_ui.put((funcion, args, kwargs))
 
-    def _procesar_cola(self):
+    def _procesar_cola(self) -> None:
         try:
             while True:
                 funcion, args, kwargs = self._cola_ui.get_nowait()
@@ -391,7 +397,7 @@ class AppClipIA(ctk.CTk):
         finally:
             self.after(100, self._procesar_cola)
 
-    def _ir_paso(self, indice):
+    def _ir_paso(self, indice: int) -> None:
         for i, etiqueta in enumerate(self._etiquetas_pasos):
             if i == indice:
                 etiqueta.configure(fg_color=ROJO, text_color="white")
@@ -400,12 +406,12 @@ class AppClipIA(ctk.CTk):
             else:
                 etiqueta.configure(fg_color=TARJETA, text_color=SILENCIO)
 
-    def _estado(self, texto, progreso=None):
+    def _estado(self, texto: str, progreso: float | None = None) -> None:
         self.etiqueta_estado.configure(text=texto)
         if progreso is not None:
             self.barra_progreso.set(min(1.0, max(0.0, progreso)))
 
-    def _bloquear(self, bloqueado):
+    def _bloquear(self, bloqueado: bool) -> None:
         # B10: deshabilitar también los botones y entradas que cambian
         # el trabajo en curso (antes solo 3 botones).
         self.ocupado = bloqueado
@@ -421,7 +427,7 @@ class AppClipIA(ctk.CTk):
         self.entrada_url.configure(state=estado)
         self.entrada_salida.configure(state=estado)
 
-    def _al_cerrar(self):
+    def _al_cerrar(self) -> None:
         """Limpia las miniaturas temporales y cierra la ventana (B10)."""
         if self._dir_miniaturas:
             shutil.rmtree(self._dir_miniaturas, ignore_errors=True)
@@ -430,7 +436,7 @@ class AppClipIA(ctk.CTk):
 
     # -- Acciones ----------------------------------------------------------
 
-    def _elegir_archivo(self):
+    def _elegir_archivo(self) -> None:
         ruta = filedialog.askopenfilename(
             title="Elegir video",
             filetypes=[("Videos", "*.mp4 *.mkv *.mov *.webm *.avi"),
@@ -442,14 +448,14 @@ class AppClipIA(ctk.CTk):
             self.etiqueta_video.configure(
                 text="Video: %s" % os.path.basename(ruta))
 
-    def _elegir_salida(self):
+    def _elegir_salida(self) -> None:
         carpeta = filedialog.askdirectory(title="Carpeta de salida")
         if carpeta:
             self.carpeta_salida = carpeta
             self.entrada_salida.delete(0, "end")
             self.entrada_salida.insert(0, carpeta)
 
-    def _asegurar_carpeta_salida(self):
+    def _asegurar_carpeta_salida(self) -> None:
         """Crea la carpeta de salida; si no se puede, cambia a una
         alternativa que funcione y avisa al usuario."""
         self.carpeta_salida = self.entrada_salida.get().strip() \
@@ -467,14 +473,15 @@ class AppClipIA(ctk.CTk):
             self.entrada_salida.delete(0, "end")
             self.entrada_salida.insert(0, alternativa)
 
-    def _analizar(self):
+    def _analizar(self) -> None:
         if self.ocupado:
             return
         ruta = self.entrada_archivo.get().strip()
         url = self.entrada_url.get().strip()
         if not ruta and not url:
             messagebox.showinfo(
-                "ClipIA", "Elige un archivo de video o pega una URL de YouTube.")
+                "ClipIA",
+                "Elige un archivo de video o pega una URL de YouTube.")
             return
         self._asegurar_carpeta_salida()
         self._bloquear(True)
@@ -482,16 +489,15 @@ class AppClipIA(ctk.CTk):
         threading.Thread(target=self._hilo_analizar, args=(ruta, url),
                          daemon=True).start()
 
-    def _hilo_analizar(self, ruta, url):
+    def _hilo_analizar(self, ruta: str, url: str) -> None:
         try:
             if url:
                 self._ui(self._estado, "Descargando video de YouTube…", 0)
                 carpeta = os.path.join(self.carpeta_salida, "descargas")
                 ruta = core.descargar_youtube(
                     url, carpeta,
-                    progreso=lambda p: self._ui(self._estado,
-                                                "Descargando video de YouTube…",
-                                                p))
+                    progreso=lambda p: self._ui(
+                        self._estado, "Descargando video de YouTube…", p))
                 self._ui(self.entrada_archivo.delete, 0, "end")
                 self._ui(self.entrada_archivo.insert, 0, ruta)
             if not os.path.isfile(ruta):
@@ -534,7 +540,7 @@ class AppClipIA(ctk.CTk):
         finally:
             self._ui(self._bloquear, False)
 
-    def _generar_miniaturas(self):
+    def _generar_miniaturas(self) -> None:
         """Genera una miniatura vertical por clip (corre en el hilo)."""
         if self._dir_miniaturas:
             shutil.rmtree(self._dir_miniaturas, ignore_errors=True)
@@ -548,17 +554,19 @@ class AppClipIA(ctk.CTk):
             except Exception:
                 clip["miniatura"] = None
 
-    def _mostrar_clips(self, preservar_seleccion=False):
+    def _mostrar_clips(self, preservar_seleccion: bool = False) -> None:
         # B10: al agregar un clip manual se redibuja la lista; con
         # preservar_seleccion se mantiene lo que el usuario desmarcó
         # (antes todo volvía a marcado). Tras un análisis nuevo no se
         # preserva (son otros clips).
         seleccion_previa = {}
         if preservar_seleccion:
-            seleccion_previa = {
-                (c["start"], c["end"]): v.get()
-                for c, v in zip(self.candidatos, self.seleccion)
-            }
+            # Las listas pueden diferir en uno: el clip manual recién
+            # agregado aún no tiene selección (queda en True).
+            for i, c in enumerate(self.candidatos):
+                if i < len(self.seleccion):
+                    seleccion_previa[(c["start"], c["end"])] = \
+                        self.seleccion[i].get()
         for widget in self.lista_clips.winfo_children():
             widget.destroy()
         self.seleccion = []
@@ -614,7 +622,7 @@ class AppClipIA(ctk.CTk):
             text="%d clips · %s de video"
             % (len(self.candidatos), core.formato_hora(self.duracion_video)))
 
-    def _seleccionar_todo(self):
+    def _seleccionar_todo(self) -> None:
         if not self.seleccion:
             return
         todos = all(v.get() for v in self.seleccion)
@@ -623,7 +631,7 @@ class AppClipIA(ctk.CTk):
         self.boton_seleccionar.configure(
             text="Quitar selección" if not todos else "Seleccionar todo")
 
-    def _crear_clip_manual(self):
+    def _crear_clip_manual(self) -> None:
         if not self.ruta_video:
             messagebox.showinfo(
                 "ClipIA", "Primero carga y analiza un video.")
@@ -639,7 +647,7 @@ class AppClipIA(ctk.CTk):
 
         DialogoClipManual(self, self.duracion_video, agregar)
 
-    def _vista_previa(self, clip):
+    def _vista_previa(self, clip: dict) -> None:
         if self.ocupado:
             messagebox.showinfo(
                 "ClipIA", "Espera a que termine el trabajo en curso.")
@@ -653,7 +661,8 @@ class AppClipIA(ctk.CTk):
             args=(clip, self.ruta_video, self.seguir_rostros.get()),
             daemon=True).start()
 
-    def _hilo_vista_previa(self, clip, ruta_video, seguir_rostros):
+    def _hilo_vista_previa(self, clip: dict, ruta_video: str,
+                           seguir_rostros: bool) -> None:
         try:
             rostros = None
             if seguir_rostros:
@@ -678,7 +687,7 @@ class AppClipIA(ctk.CTk):
             self._ui(self._bloquear, False)
 
     @staticmethod
-    def _abrir_archivo(ruta):
+    def _abrir_archivo(ruta: str) -> None:
         """Abre un archivo con el programa predeterminado del sistema."""
         if sys.platform.startswith("win"):
             os.startfile(ruta)
@@ -687,10 +696,11 @@ class AppClipIA(ctk.CTk):
         else:
             subprocess.run(["xdg-open", ruta])
 
-    def _exportar(self):
+    def _exportar(self) -> None:
         if self.ocupado:
             return
-        elegidos = [c for c, v in zip(self.candidatos, self.seleccion)
+        elegidos = [c for c, v in zip(self.candidatos, self.seleccion,
+                                       strict=True)
                     if v.get()]
         if not elegidos:
             messagebox.showinfo("ClipIA", "Selecciona al menos un clip.")
@@ -704,8 +714,8 @@ class AppClipIA(ctk.CTk):
                   self.seguir_rostros.get()),
             daemon=True).start()
 
-    def _hilo_exportar(self, elegidos, ruta_video, segmentos,
-                       seguir_rostros):
+    def _hilo_exportar(self, elegidos: list[dict], ruta_video: str,
+                       segmentos: list[dict], seguir_rostros: bool) -> None:
         try:
             os.makedirs(self.carpeta_salida, exist_ok=True)
             base = os.path.splitext(os.path.basename(ruta_video))[0]
@@ -730,8 +740,9 @@ class AppClipIA(ctk.CTk):
                         def progreso_rostros(p, i=i, total=total):
                             self._ui(
                                 self._estado,
-                                "Detectando rostros en el clip %d de %d… (%d%%)"
-                                % (i, total, int(p * 100)), (i - 1) / total)
+                                "Detectando rostros en el clip %d de %d… "
+                                "(%d%%)" % (i, total, int(p * 100)),
+                                (i - 1) / total)
                         rostros = _detectar_con_limite(
                             ruta_video, clip["start"], clip["end"],
                             progreso=progreso_rostros)
@@ -761,7 +772,7 @@ class AppClipIA(ctk.CTk):
             self._ui(self._bloquear, False)
 
 
-def main():
+def main() -> None:
     app = AppClipIA()
     app.mainloop()
 

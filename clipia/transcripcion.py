@@ -1,8 +1,12 @@
-# -*- coding: utf-8 -*-
 """Transcripción con faster-whisper (español, timestamps por palabra)."""
 import os
 import subprocess
 import tempfile
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
 
 # Silencia el aviso de huggingface_hub sobre symlinks en Windows: el caché
 # funciona igual sin ellos, el aviso solo confunde.
@@ -11,7 +15,7 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 from .utilidades import obtener_duracion
 
 
-def _elegir_dispositivo():
+def _elegir_dispositivo() -> tuple[str, str]:
     """Usa la GPU (CUDA) si está disponible; si no, CPU con int8."""
     try:
         from ctranslate2 import get_cuda_device_count
@@ -22,8 +26,9 @@ def _elegir_dispositivo():
     return "cpu", "int8"
 
 
-def _extraer_audio_wav(ruta_video, ruta_wav):
-    """Extrae el audio a WAV PCM 16 kHz mono con ffmpeg (lo que Whisper usa)."""
+def _extraer_audio_wav(ruta_video: str, ruta_wav: str) -> None:
+    """Extrae el audio a WAV PCM 16 kHz mono con ffmpeg
+    (lo que Whisper usa)."""
     subprocess.run(
         ["ffmpeg", "-y", "-v", "error", "-i", ruta_video,
          "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", ruta_wav],
@@ -31,7 +36,7 @@ def _extraer_audio_wav(ruta_video, ruta_wav):
     )
 
 
-def _leer_wav_numpy(ruta_wav):
+def _leer_wav_numpy(ruta_wav: str) -> "np.ndarray":
     """Lee un WAV PCM 16 bits a un arreglo float32 normalizado [-1, 1]."""
     import wave
 
@@ -42,7 +47,9 @@ def _leer_wav_numpy(ruta_wav):
     return np.frombuffer(datos, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-def transcribir(ruta_video, modelo="base", idioma="es", progreso=None):
+def transcribir(ruta_video: str, modelo: str = "base", idioma: str = "es",
+                  progreso: Callable[[float], None] | None = None
+                  ) -> list[dict]:
     """Transcribe el audio de un video.
 
     Devuelve una lista de segmentos:

@@ -1,0 +1,4 @@
+# ClipIA — dependencias de desarrollo (NO las instala setup.bat)
+# Pruebas y lint. Versiones probadas el 13-11-2026.
+pytest==9.2.0
+ruff==0.17.5

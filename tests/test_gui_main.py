@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests de GUI de main.py (B10): limpieza de temps, _bloquear y
 selección preservada. La fixture `app` vive en conftest."""
 import os

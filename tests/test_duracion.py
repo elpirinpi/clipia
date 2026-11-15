@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """Tests de obtener_duracion (B8)."""
 from unittest import mock
 
 import pytest
+from conftest import video_sintetico
 
 import clipia_core as core
-from conftest import video_sintetico
 
 
 def _resultado_ffprobe(salida, codigo=0, error=""):

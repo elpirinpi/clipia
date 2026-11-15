@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests de la fachada clipia_core.py (división en paquete, Fase 0)."""
 import clipia
 import clipia_core as core

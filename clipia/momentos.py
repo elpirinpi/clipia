@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Detección de los mejores momentos para clips cortos (30-90 s)."""
 import re
 
 # Palabras que suelen marcar un momento con gancho en español.
-PALABRAS_GANCHO = {
+PALABRAS_GANCHO: set[str] = {
     "mira", "miran", "escucha", "escuchen", "atención", "atencion", "ojo",
     "importante", "secreto", "secretos", "gratis", "nadie", "nunca",
     "siempre", "verdad", "increíble", "increible", "cuidado", "mejor",
@@ -12,16 +11,16 @@ PALABRAS_GANCHO = {
     "imagina", "imagínate", "imaginate", "recuerda", "sabes", "créeme",
     "creeme", "te", "voy", "contar", "pasa", "resulta", "fíjate", "fijate",
     "alerta", "urgente", "exclusivo", "nuevo", "primero", "último",
-    "ultimo", "ahora", "resulta", "sucedió", "sucedio", "pasó", "paso",
-    "misterio", "revelo", "reveló", "confieso", "nadie", "todos",
+    "ultimo", "ahora", "sucedió", "sucedio", "pasó", "paso",
+    "misterio", "revelo", "reveló", "confieso", "todos",
     "ninguno", "jamás", "jamas", "imposible", "locura", "brutal",
 }
 
 # Duraciones de ventana que se prueban (segundos).
-DURACIONES_VENTANA = (30, 45, 60, 75, 90)
+DURACIONES_VENTANA: tuple[int, ...] = (30, 45, 60, 75, 90)
 
 
-def _frases_de_segmentos(segmentos):
+def _frases_de_segmentos(segmentos: list[dict]) -> list[dict]:
     """Agrupa las palabras en frases (por puntuación o pausa larga).
 
     Devuelve [{"start": float, "end": float, "text": str, "words": [...]}].
@@ -55,7 +54,7 @@ def _frases_de_segmentos(segmentos):
     } for f in frases if "".join(p["word"] for p in f).strip()]
 
 
-def _puntuar_ventana(frases, inicio, fin):
+def _puntuar_ventana(frases: list[dict], inicio: float, fin: float) -> float:
     """Puntúa una ventana [inicio, fin] de 0 a 1.
 
     Combina densidad de habla, exclamaciones/preguntas y palabras gancho.
@@ -81,14 +80,16 @@ def _puntuar_ventana(frases, inicio, fin):
     return 0.45 * densidad + 0.30 * gancho_puntos + 0.25 * signos_puntos
 
 
-def _traslapan(a_inicio, a_fin, b_inicio, b_fin, umbral=0.5):
+def _traslapan(a_inicio: float, a_fin: float, b_inicio: float, b_fin: float,
+               umbral: float = 0.5) -> bool:
     """True si el traslape entre dos ventanas supera el umbral."""
     traslape = max(0.0, min(a_fin, b_fin) - max(a_inicio, b_inicio))
     menor = min(a_fin - a_inicio, b_fin - b_inicio)
     return menor > 0 and traslape / menor > umbral
 
 
-def detectar_momentos(segmentos, duracion_video, cantidad=10):
+def detectar_momentos(segmentos: list[dict], duracion_video: float,
+                      cantidad: int = 10) -> list[dict]:
     """Detecta los mejores momentos para clips cortos.
 
     Devuelve hasta `cantidad` candidatos ordenados por puntuación:

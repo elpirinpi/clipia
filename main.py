@@ -666,32 +666,39 @@ class AppClipIA(ctk.CTk):
                 nombre = "%s_clip%02d_%s-%s.mp4" % (
                     base, i, core.formato_hora(clip["start"]).replace(":", ""),
                     core.formato_hora(clip["end"]).replace(":", ""))
-                ruta_ass = os.path.join(self.carpeta_salida, "clip_tmp.ass")
-                core.generar_subtitulos_ass(
-                    segmentos, clip["start"], clip["end"], ruta_ass)
                 ruta_salida = os.path.join(self.carpeta_salida, nombre)
+                # B3: un ASS temporal único por clip. El archivo compartido
+                # clip_tmp.ass se pisaba entre clips y quedaba huérfano si
+                # la exportación fallaba a mitad.
+                fd, ruta_ass = tempfile.mkstemp(suffix=".ass",
+                                                prefix="clipia_sub_")
+                os.close(fd)
+                try:
+                    core.generar_subtitulos_ass(
+                        segmentos, clip["start"], clip["end"], ruta_ass)
 
-                rostros = None
-                if seguir_rostros:
-                    def progreso_rostros(p, i=i, total=total):
-                        self._ui(
-                            self._estado,
-                            "Detectando rostros en el clip %d de %d… (%d%%)"
-                            % (i, total, int(p * 100)), (i - 1) / total)
-                    rostros = _detectar_con_limite(
-                        ruta_video, clip["start"], clip["end"],
-                        progreso=progreso_rostros)
+                    rostros = None
+                    if seguir_rostros:
+                        def progreso_rostros(p, i=i, total=total):
+                            self._ui(
+                                self._estado,
+                                "Detectando rostros en el clip %d de %d… (%d%%)"
+                                % (i, total, int(p * 100)), (i - 1) / total)
+                        rostros = _detectar_con_limite(
+                            ruta_video, clip["start"], clip["end"],
+                            progreso=progreso_rostros)
 
-                def progreso(p, i=i, total=total):
-                    self._ui(self._estado,
-                             "Exportando clip %d de %d…" % (i, total),
-                             (i - 1 + p) / total)
+                    def progreso(p, i=i, total=total):
+                        self._ui(self._estado,
+                                 "Exportando clip %d de %d…" % (i, total),
+                                 (i - 1 + p) / total)
 
-                core.exportar_clip(ruta_video, clip["start"], clip["end"],
-                                   ruta_ass, ruta_salida, progreso=progreso,
-                                   rostros=rostros)
-                if os.path.exists(ruta_ass):
-                    os.remove(ruta_ass)
+                    core.exportar_clip(ruta_video, clip["start"], clip["end"],
+                                       ruta_ass, ruta_salida,
+                                       progreso=progreso, rostros=rostros)
+                finally:
+                    if os.path.exists(ruta_ass):
+                        os.remove(ruta_ass)
             self._ui(self._estado,
                      "Listo: %d clip(s) en %s" % (total, self.carpeta_salida),
                      1.0)

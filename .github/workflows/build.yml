@@ -14,7 +14,8 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-s:
+
+jobs:
   build-windows:
     runs-on: windows-latest
     steps:

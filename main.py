@@ -24,9 +24,11 @@ import customtkinter as ctk
 from PIL import Image
 
 import clipia_core as core
+from clipia.cola import ColaExportacion, TrabajoExportacion, workers_efectivos
 from clipia.config import cargar_config, guardar_config
 from clipia.encoder import descripcion_encoder, detectar_encoder
 from clipia.logs import configurar_logging
+from clipia.rostros import detectar_rostros_con_limite
 from clipia.transcripcion import IDIOMAS, MODELOS_WHISPER, ram_total_gb
 
 log = logging.getLogger("clipia.gui")
@@ -123,7 +125,7 @@ class DialogoClipManual(ctk.CTkToplevel):
 
 
 class DialogoAjustes(ctk.CTkToplevel):
-    """Ventana de ajustes (codificador, modelo de voz, idioma)."""
+    """Ventana de ajustes (codificador, modelo de voz, idioma, workers)."""
 
     OPCIONES_ENCODER = [
         ("Automático (recomendado)", "auto"),
@@ -133,10 +135,17 @@ class DialogoAjustes(ctk.CTkToplevel):
         ("libx264 — CPU", "libx264"),
     ]
 
+    OPCIONES_WORKERS = [
+        ("Automático (recomendado)", 0),
+        ("1 clip a la vez", 1),
+        ("2 clips a la vez", 2),
+        ("3 clips a la vez", 3),
+    ]
+
     def __init__(self, padre, config: dict, al_guardar) -> None:
         super().__init__(padre)
         self.title("Ajustes")
-        self.geometry("400x480")
+        self.geometry("400x560")
         self.resizable(False, False)
         self.configure(fg_color=PANEL)
         self.transient(padre)
@@ -199,6 +208,26 @@ class DialogoAjustes(ctk.CTkToplevel):
             variable=self.variable_idioma, width=320,
         ).pack(padx=24)
 
+        ctk.CTkLabel(self, text="Clips a exportar a la vez",
+                     font=ctk.CTkFont(size=12), text_color=SILENCIO,
+                     anchor="w").pack(fill="x", padx=24, pady=(12, 4))
+        workers_actual = config.get("workers_exportacion", 0)
+        texto_workers = next((t for t, v in self.OPCIONES_WORKERS
+                              if v == workers_actual),
+                             self.OPCIONES_WORKERS[0][0])
+        self.variable_workers = tk.StringVar(value=texto_workers)
+        ctk.CTkOptionMenu(
+            self, values=[t for t, _v in self.OPCIONES_WORKERS],
+            variable=self.variable_workers, width=320,
+        ).pack(padx=24)
+        ctk.CTkLabel(
+            self,
+            text="«Automático» usa 1 con CPU y 2 con codificador por\n"
+                 "hardware. Con CPU, exportar varios a la vez no es\n"
+                 "más rápido: los workers se reparten la misma CPU.",
+            font=ctk.CTkFont(size=11), text_color=SILENCIO,
+            justify="left").pack(padx=24, pady=(8, 4), anchor="w")
+
         ctk.CTkButton(
             self, text="Guardar", fg_color=AZUL, hover_color=AZUL_HOVER,
             command=self._guardar,
@@ -233,9 +262,13 @@ class DialogoAjustes(ctk.CTkToplevel):
         idioma_elegido = self.variable_idioma.get()
         valor_idioma = next((c for c, t in IDIOMAS
                              if t == idioma_elegido), "es")
+        workers_elegido = self.variable_workers.get()
+        valor_workers = next((v for t, v in self.OPCIONES_WORKERS
+                              if t == workers_elegido), 0)
         self._al_guardar({"encoder": valor_encoder,
                           "modelo": self._modelo_elegido(),
-                          "idioma": valor_idioma})
+                          "idioma": valor_idioma,
+                          "workers_exportacion": valor_workers})
         self.destroy()
 
 
@@ -262,35 +295,6 @@ def _crear_carpeta_salida() -> str:
         except OSError:
             continue
     return candidatos[0]
-
-
-def _detectar_con_limite(
-    ruta_video: str, inicio: float, fin: float,
-    progreso: Callable[[float], None] | None, timeout: int = 60,
-) -> list[tuple[float, float]]:
-    """Detecta rostros con un límite de tiempo.
-
-    Si la detección tarda más de `timeout` segundos (por ejemplo, un
-    video que se resiste), se abandona y se devuelve [] para que la
-    exportación siga con el recorte centrado: la app nunca se queda
-    congelada esperando.
-    """
-    resultado = []
-
-    def trabajo():
-        try:
-            resultado.extend(core.detectar_rostros(
-                ruta_video, inicio, fin, progreso=progreso))
-        except Exception:
-            pass
-
-    hilo = threading.Thread(target=trabajo, daemon=True)
-    hilo.start()
-    hilo.join(timeout)
-    if hilo.is_alive():
-        log.warning("la detección de rostros tardó más de %d s; "
-                    "se sigue con el recorte centrado", timeout)
-    return resultado
 
 
 def _limpiar_temps_vista_previa() -> None:
@@ -338,6 +342,7 @@ class AppClipIA(ctk.CTk):
         else:
             self.carpeta_salida = _crear_carpeta_salida()
         self.ocupado = False
+        self._cancelar_exportacion: threading.Event | None = None
         self.seguir_rostros = tk.BooleanVar(
             value=bool(self.config.get("seguir_rostros", True)))
         self._imagenes_miniaturas = []
@@ -524,6 +529,12 @@ class AppClipIA(ctk.CTk):
             height=44, width=200, font=ctk.CTkFont(size=15, weight="bold"),
             command=self._exportar)
         self.boton_exportar.pack(side="right", padx=20, pady=26)
+        self.boton_cancelar = ctk.CTkButton(
+            pie, text="Cancelar", fg_color=TARJETA, hover_color=BORDE,
+            text_color=TEXTO, height=44, width=110,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            command=self._cancelar_exportar, state="disabled")
+        self.boton_cancelar.pack(side="right", padx=(0, 10), pady=26)
 
     # -- Utilidades de interfaz ------------------------------------------
 
@@ -846,7 +857,7 @@ class AppClipIA(ctk.CTk):
             encoder = detectar_encoder(self.config.get("encoder", "auto"))
             rostros = None
             if seguir_rostros:
-                rostros = _detectar_con_limite(
+                rostros = detectar_rostros_con_limite(
                     ruta_video, clip["start"], clip["end"],
                     progreso=lambda p: self._ui(
                         self._estado,
@@ -878,6 +889,14 @@ class AppClipIA(ctk.CTk):
         else:
             subprocess.run(["xdg-open", ruta])
 
+    def _cancelar_exportar(self) -> None:
+        """Marca la cancelación: la cola mata los ffmpeg en curso,
+        borra los parciales y no empieza los clips pendientes."""
+        if self._cancelar_exportacion is not None:
+            self._cancelar_exportacion.set()
+            self._estado("Cancelando…", None)
+            self.boton_cancelar.configure(state="disabled")
+
     def _exportar(self) -> None:
         if self.ocupado:
             return
@@ -890,6 +909,8 @@ class AppClipIA(ctk.CTk):
         self._asegurar_carpeta_salida()
         self._bloquear(True)
         self._ir_paso(3)
+        self._cancelar_exportacion = threading.Event()
+        self.boton_cancelar.configure(state="normal")
         threading.Thread(
             target=self._hilo_exportar,
             args=(elegidos, self.ruta_video, list(self.segmentos),
@@ -903,51 +924,59 @@ class AppClipIA(ctk.CTk):
             base = os.path.splitext(os.path.basename(ruta_video))[0]
             total = len(elegidos)
             encoder = detectar_encoder(self.config.get("encoder", "auto"))
+            workers = workers_efectivos(
+                self.config.get("workers_exportacion", 0), encoder)
+            cancelar = self._cancelar_exportacion or threading.Event()
+            trabajos = []
             for i, clip in enumerate(elegidos, start=1):
                 nombre = "%s_clip%02d_%s-%s.mp4" % (
                     base, i, core.formato_hora(clip["start"]).replace(":", ""),
                     core.formato_hora(clip["end"]).replace(":", ""))
-                ruta_salida = os.path.join(self.carpeta_salida, nombre)
-                # B3: un ASS temporal único por clip. El archivo compartido
-                # clip_tmp.ass se pisaba entre clips y quedaba huérfano si
-                # la exportación fallaba a mitad.
-                fd, ruta_ass = tempfile.mkstemp(suffix=".ass",
-                                                prefix="clipia_sub_")
-                os.close(fd)
-                try:
-                    core.generar_subtitulos_ass(
-                        segmentos, clip["start"], clip["end"], ruta_ass)
+                trabajos.append(TrabajoExportacion(
+                    clip=clip, ruta_video=ruta_video,
+                    segmentos=list(segmentos),
+                    carpeta_salida=self.carpeta_salida, nombre=nombre,
+                    seguir_rostros=seguir_rostros, encoder=encoder))
 
-                    rostros = None
-                    if seguir_rostros:
-                        def progreso_rostros(p, i=i, total=total):
-                            self._ui(
-                                self._estado,
-                                "Detectando rostros en el clip %d de %d… "
-                                "(%d%%)" % (i, total, int(p * 100)),
-                                (i - 1) / total)
-                        rostros = _detectar_con_limite(
-                            ruta_video, clip["start"], clip["end"],
-                            progreso=progreso_rostros)
+            def al_progreso(fraccion, eta, terminados, total_lote, en_curso):
+                if en_curso:
+                    nombre, p = en_curso[0]
+                    texto = "Exportando %s… (%d%%)" % (nombre, int(p * 100))
+                else:
+                    texto = "Exportando…"
+                texto += " · %d de %d listos" % (terminados, total_lote)
+                if eta is not None:
+                    texto += " · quedan ~%s" % core.formato_hora(eta)
+                self._ui(self._estado, texto, fraccion)
 
-                    def progreso(p, i=i, total=total):
-                        self._ui(self._estado,
-                                 "Exportando clip %d de %d…" % (i, total),
-                                 (i - 1 + p) / total)
-
-                    core.exportar_clip(ruta_video, clip["start"], clip["end"],
-                                       ruta_ass, ruta_salida,
-                                       progreso=progreso, rostros=rostros,
-                                       encoder=encoder)
-                finally:
-                    if os.path.exists(ruta_ass):
-                        os.remove(ruta_ass)
-            self._ui(self._estado,
-                     "Listo: %d clip(s) en %s" % (total, self.carpeta_salida),
-                     1.0)
-            self._ui(messagebox.showinfo, "ClipIA",
-                     "%d clip(s) exportados en:\n%s"
-                     % (total, self.carpeta_salida))
+            cola = ColaExportacion(workers=workers, al_progreso=al_progreso)
+            resultados = cola.exportar(trabajos, cancelar)
+            ok = [r for r in resultados if r.ok]
+            fallidos = [r for r in resultados
+                        if not r.ok and not r.cancelado]
+            cancelados = [r for r in resultados if r.cancelado]
+            if cancelados and not ok:
+                self._ui(self._estado, "Exportación cancelada.", 0)
+                return
+            if fallidos:
+                detalle = "\n".join(
+                    "%s: %s" % (r.trabajo.nombre, r.error)
+                    for r in fallidos)
+                log.warning("exportación con fallos:\n%s", detalle)
+                self._ui(self._estado,
+                         "Listo con errores: %d de %d clip(s) en %s"
+                         % (len(ok), total, self.carpeta_salida), 1.0)
+                self._ui(messagebox.showwarning, "ClipIA",
+                         "%d de %d clip(s) exportados en:\n%s\n\n"
+                         "Fallaron:\n%s"
+                         % (len(ok), total, self.carpeta_salida, detalle))
+            else:
+                self._ui(self._estado,
+                         "Listo: %d clip(s) en %s"
+                         % (len(ok), self.carpeta_salida), 1.0)
+                self._ui(messagebox.showinfo, "ClipIA",
+                         "%d clip(s) exportados en:\n%s"
+                         % (len(ok), self.carpeta_salida))
         except Exception as error:  # noqa: BLE001 - mostrar cualquier error
             detalle = "%s: %s" % (type(error).__name__, error)
             log.exception("error en la exportación")
@@ -955,6 +984,7 @@ class AppClipIA(ctk.CTk):
             self._ui(messagebox.showerror, "ClipIA", detalle)
         finally:
             self._ui(self._bloquear, False)
+            self._ui(self.boton_cancelar.configure, state="disabled")
 
 
 def main() -> None:

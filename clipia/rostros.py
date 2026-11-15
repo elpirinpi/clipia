@@ -4,13 +4,17 @@ Los fotogramas se extraen con ffmpeg (v1.1.2): nunca usar
 cv2.VideoCapture, que se congela con algunos MP4 en Windows.
 Solo mide dónde está la cara en cada momento; no identifica a nadie.
 """
+import logging
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable
 
 from .cache import clave_archivo, escribir_cache, leer_cache
+
+log = logging.getLogger("clipia.rostros")
 
 
 def detectar_rostros(ruta_video: str, inicio: float, fin: float,
@@ -107,6 +111,35 @@ def detectar_rostros(ruta_video: str, inicio: float, fin: float,
         resultado = muestras
     if clave is not None and not error:
         escribir_cache("rostros", clave, {"muestras": resultado})
+    return resultado
+
+
+def detectar_rostros_con_limite(
+    ruta_video: str, inicio: float, fin: float,
+    progreso: Callable[[float], None] | None = None, timeout: int = 60,
+) -> list[tuple[float, float]]:
+    """Detecta rostros con un límite de tiempo.
+
+    Si la detección tarda más de `timeout` segundos (por ejemplo, un
+    video que se resiste), se abandona y se devuelve [] para que la
+    exportación siga con el recorte centrado: la app nunca se queda
+    congelada esperando.
+    """
+    resultado: list[tuple[float, float]] = []
+
+    def trabajo() -> None:
+        try:
+            resultado.extend(detectar_rostros(
+                ruta_video, inicio, fin, progreso=progreso))
+        except Exception:
+            pass
+
+    hilo = threading.Thread(target=trabajo, daemon=True)
+    hilo.start()
+    hilo.join(timeout)
+    if hilo.is_alive():
+        log.warning("la detección de rostros tardó más de %d s; "
+                    "se sigue con el recorte centrado", timeout)
     return resultado
 
 

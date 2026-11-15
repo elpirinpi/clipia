@@ -1,59 +1,143 @@
-"""Tests de GUI del hilo de exportación (B3).
+"""Tests de GUI del hilo de exportación (Fase 1: cola + Cancelar).
 
-Necesitan pantalla: en Linux correr con xvfb-run -a; en Windows (CI)
-corren con el escritorio del runner. La fixture `app` vive en conftest.
+La cola real se prueba en test_cola.py; aquí se prueba que la GUI la
+construye bien (trabajos, workers, encoder) y muestra el resumen
+correcto. Necesitan pantalla: en Linux correr con xvfb-run -a.
 """
-import os
+import threading
+import time
 from unittest import mock
 
 import main as app_mod
+from clipia.cola import ResultadoClip
+
+SEGMENTOS = [{"start": 0.0, "end": 10.0, "text": "hola mundo",
+              "words": []}]
+CLIPS = [{"start": 0.0, "end": 5.0, "score": 1.0, "text": "uno"},
+         {"start": 5.0, "end": 10.0, "score": 1.0, "text": "dos"}]
 
 
-def test_hilo_exportar_usa_ass_temporal_unico_por_clip(app, tmp_path):
-    """B3: cada clip usa su propio ASS temporal y se borra al terminar;
-    ya no existe el clip_tmp.ass compartido."""
-    segmentos = [{"start": 0.0, "end": 10.0, "text": "hola mundo",
-                  "words": []}]
-    clips = [{"start": 0.0, "end": 5.0, "score": 1.0, "text": "uno"},
-             {"start": 5.0, "end": 10.0, "score": 1.0, "text": "dos"}]
-    rutas_ass = []
+class ColaFalsa:
+    """ColaExportacion falsa: registra cómo se construyó y devuelve
+    los resultados que se le indiquen."""
 
-    def falso_exportar(ruta_video, inicio, fin, ruta_ass, ruta_salida,
-                       progreso=None, rostros=None, **kwargs):
-        rutas_ass.append(ruta_ass)
-        assert os.path.isfile(ruta_ass)
-        return ruta_salida
+    instancias = []
 
-    with mock.patch.object(app_mod.core, "exportar_clip",
-                           side_effect=falso_exportar):
-        app._hilo_exportar(clips, "video.mp4", segmentos, False)
-    assert len(rutas_ass) == 2
-    assert rutas_ass[0] != rutas_ass[1]
-    assert not os.path.exists(rutas_ass[0])
-    assert not os.path.exists(rutas_ass[1])
-    assert not os.path.exists(
-        os.path.join(app.carpeta_salida, "clip_tmp.ass"))
+    def __init__(self, workers=1, al_progreso=None, **kwargs):
+        self.workers = workers
+        self.al_progreso = al_progreso
+        self.trabajos = None
+        self.resultados = None  # se fija desde el test
+        ColaFalsa.instancias.append(self)
+
+    def exportar(self, trabajos, cancelar=None):
+        self.trabajos = trabajos
+        if self.al_progreso:
+            self.al_progreso(1.0, None, len(trabajos), len(trabajos), [])
+        if self.resultados is not None:
+            return self.resultados
+        return [ResultadoClip(t, True, ruta="salida/%s" % t.nombre)
+                for t in trabajos]
 
 
-def test_hilo_exportar_borra_ass_aunque_falle(app):
-    """B3: si la exportación de un clip falla, su ASS temporal se borra
-    igualmente (try/finally)."""
-    segmentos = [{"start": 0.0, "end": 10.0, "text": "hola mundo",
-                  "words": []}]
-    clips = [{"start": 0.0, "end": 5.0, "score": 1.0, "text": "uno"},
-             {"start": 5.0, "end": 10.0, "score": 1.0, "text": "dos"}]
-    rutas_ass = []
+def _con_cola_falsa():
+    return mock.patch.object(app_mod, "ColaExportacion", ColaFalsa)
 
-    def falso_exportar(ruta_video, inicio, fin, ruta_ass, ruta_salida,
-                       progreso=None, rostros=None, **kwargs):
-        rutas_ass.append(ruta_ass)
-        if len(rutas_ass) == 2:
-            raise RuntimeError("fallo provocado")
-        return ruta_salida
 
-    with mock.patch.object(app_mod.core, "exportar_clip",
-                           side_effect=falso_exportar):
-        app._hilo_exportar(clips, "video.mp4", segmentos, False)
-    assert len(rutas_ass) == 2
-    assert not os.path.exists(rutas_ass[0])
-    assert not os.path.exists(rutas_ass[1])
+def test_hilo_exportar_construye_trabajos_y_resume(app, tmp_path):
+    """Los trabajos llevan nombre clipNN_inicio-fin, el encoder
+    detectado y la carpeta de salida; al final se muestra el resumen."""
+    ColaFalsa.instancias.clear()
+    app.carpeta_salida = str(tmp_path)
+    with _con_cola_falsa(), mock.patch.object(
+            app_mod.messagebox, "showinfo") as info:
+        app._hilo_exportar(CLIPS, "video.mp4", SEGMENTOS, False)
+        app._procesar_cola()  # los messagebox van por la cola de UI
+    cola = ColaFalsa.instancias[-1]
+    assert cola.workers == 1  # libx264 en este servidor
+    assert [t.nombre for t in cola.trabajos] == [
+        "video_clip01_000-005.mp4", "video_clip02_005-010.mp4"]
+    assert all(t.encoder == "libx264" for t in cola.trabajos)
+    assert all(t.carpeta_salida == str(tmp_path) for t in cola.trabajos)
+    assert all(not t.seguir_rostros for t in cola.trabajos)
+    info.assert_called_once()
+    assert "2 clip(s) exportados" in info.call_args[0][1]
+
+
+def test_hilo_exportar_usa_workers_configurados(app, tmp_path):
+    app.config["workers_exportacion"] = 3
+    ColaFalsa.instancias.clear()
+    with _con_cola_falsa(), mock.patch.object(app_mod.messagebox,
+                                              "showinfo"):
+        app._hilo_exportar(CLIPS, "video.mp4", SEGMENTOS, False)
+    assert ColaFalsa.instancias[-1].workers == 3
+
+
+def test_hilo_exportar_con_fallos_muestra_advertencia(app, tmp_path):
+    ColaFalsa.instancias.clear()
+    app.carpeta_salida = str(tmp_path)
+
+    def exportar_con_fallo(self, trabajos, cancelar=None):
+        self.trabajos = trabajos
+        return [ResultadoClip(trabajos[0], True, ruta="a"),
+                ResultadoClip(trabajos[1], False, error="ffmpeg falló")]
+
+    with _con_cola_falsa(), mock.patch.object(
+            app_mod.messagebox, "showwarning") as aviso:
+        with mock.patch.object(ColaFalsa, "exportar", exportar_con_fallo):
+            app._hilo_exportar(CLIPS, "video.mp4", SEGMENTOS, False)
+            app._procesar_cola()  # los messagebox van por la cola de UI
+    aviso.assert_called_once()
+    assert "1 de 2 clip(s)" in aviso.call_args[0][1]
+    assert "ffmpeg falló" in aviso.call_args[0][1]
+
+
+def test_hilo_exportar_cancelado_no_muestra_dialogo(app, tmp_path):
+    ColaFalsa.instancias.clear()
+
+    def exportar_cancelado(self, trabajos, cancelar=None):
+        self.trabajos = trabajos
+        return [ResultadoClip(t, False, cancelado=True) for t in trabajos]
+
+    with _con_cola_falsa(), mock.patch.object(
+            app_mod.messagebox, "showinfo") as info, mock.patch.object(
+            app_mod.messagebox, "showwarning") as aviso:
+        with mock.patch.object(ColaFalsa, "exportar", exportar_cancelado):
+            app._hilo_exportar(CLIPS, "video.mp4", SEGMENTOS, False)
+            app._procesar_cola()  # el estado va por la cola de UI
+    info.assert_not_called()
+    aviso.assert_not_called()
+    assert "cancelada" in app.etiqueta_estado.cget("text").lower()
+
+
+def test_boton_cancelar_marca_el_evento(app):
+    app._cancelar_exportacion = threading.Event()
+    app.boton_cancelar.configure(state="normal")
+    app._cancelar_exportar()
+    assert app._cancelar_exportacion.is_set()
+    assert str(app.boton_cancelar.cget("state")) == "disabled"
+
+
+def test_exportar_habilita_boton_cancelar(app, tmp_path, monkeypatch):
+    """_exportar habilita el botón Cancelar antes de lanzar el hilo."""
+    import tkinter as tk
+
+    ColaFalsa.instancias.clear()
+    app.carpeta_salida = str(tmp_path)
+    app.ruta_video = "video.mp4"
+    app.candidatos = list(CLIPS)
+    app.segmentos = list(SEGMENTOS)
+    app.seleccion = [tk.BooleanVar(value=True) for _ in CLIPS]
+    monkeypatch.setattr(app_mod, "ColaExportacion", ColaFalsa)
+    monkeypatch.setattr(app_mod.messagebox, "showinfo", lambda *a: None)
+    app._exportar()
+    assert str(app.boton_cancelar.cget("state")) == "normal"
+    assert app._cancelar_exportacion is not None
+    # Esperar a que el hilo termine y procesar la cola de UI.
+    for _ in range(100):
+        app.update()
+        time.sleep(0.05)
+        if not app.ocupado:
+            break
+    app._procesar_cola()
+    assert str(app.boton_cancelar.cget("state")) == "disabled"

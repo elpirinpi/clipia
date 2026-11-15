@@ -88,3 +88,27 @@ def test_al_guardar_ajustes_actualiza_config(app, monkeypatch):
     monkeypatch.setattr(app_mod, "guardar_config", lambda valores: "x")
     app._al_guardar_ajustes({"encoder": "libx264"})
     assert app.config["encoder"] == "libx264"
+
+
+def test_dialogo_ajustes_muestra_workers_actual(app):
+    dialogo = app_mod.DialogoAjustes(app, {"workers_exportacion": 2},
+                                     lambda valores: None)
+    try:
+        assert dialogo.variable_workers.get() == "2 clips a la vez"
+    finally:
+        dialogo.destroy()
+
+
+def test_dialogo_ajustes_guarda_workers(app):
+    guardados = {}
+    dialogo = app_mod.DialogoAjustes(app, {"workers_exportacion": 0},
+                                     guardados.update)
+    try:
+        dialogo.variable_workers.set("3 clips a la vez")
+        dialogo._guardar()
+    finally:
+        try:
+            dialogo.destroy()
+        except Exception:
+            pass
+    assert guardados["workers_exportacion"] == 3

@@ -1,12 +1,37 @@
 """Tests de exportar_clip (B9): -map, ASS en cwd temporal, sin audio."""
 import json
+import os
 import subprocess
+import threading
+import time
 import wave
 
 import numpy as np
+import pytest
 from conftest import video_sintetico
 
 import clipia_core as core
+
+VIDEO_PRUEBA = os.path.expanduser(
+    "~/workspace/clipia-test/video_prueba.mp4")
+
+
+def _ffmpeg_corriendo():
+    """Número de procesos ffmpeg en curso (solo Linux vía /proc;
+    None si no se puede contar)."""
+    if not os.path.isdir("/proc"):
+        return None
+    total = 0
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open("/proc/%s/cmdline" % pid, "rb") as archivo:
+                if b"ffmpeg" in archivo.read().split(b"\0")[0]:
+                    total += 1
+        except OSError:
+            pass
+    return total
 
 
 def flujos(ruta):
@@ -93,3 +118,33 @@ def test_exportar_video_sin_audio_no_falla(tmp_path):
     salida = str(tmp_path / "clip.mp4")
     core.exportar_clip(video, 0, 5, None, salida, con_subtitulos=False)
     assert flujos(salida) == [("video", "h264")]
+
+
+def test_exportar_clip_cancelar_mata_ffmpeg_y_borra_parcial(tmp_path):
+    """Fase 1: cancelar a mitad mata el ffmpeg en menos de 2 s, borra
+    el parcial y no deja el proceso huérfano."""
+    if not os.path.isfile(VIDEO_PRUEBA):
+        pytest.skip("solo local: necesita el video de prueba")
+    salida = str(tmp_path / "clip.mp4")
+    cancelar = threading.Event()
+    momento = {}
+
+    def marcar():
+        momento["t"] = time.time()
+        cancelar.set()
+
+    antes = _ffmpeg_corriendo()
+    threading.Timer(2.0, marcar).start()
+    t0 = time.time()
+    with pytest.raises(core.ExportacionCancelada):
+        core.exportar_clip(VIDEO_PRUEBA, 0, 30, None, salida,
+                           con_subtitulos=False, cancelar=cancelar)
+    t_fin = time.time()
+    # La cancelación llegó a los 2 s; el proceso debió morir en <2 s
+    # desde ese momento (un export de 30 s tardaría ~25 s).
+    assert t_fin - momento["t"] < 2.0, "el ffmpeg tardó en morir"
+    assert t_fin - t0 < 10.0
+    assert not os.path.exists(salida), "el parcial no se borró"
+    despues = _ffmpeg_corriendo()
+    if antes is not None and despues is not None:
+        assert despues <= antes, "quedó un ffmpeg huérfano"

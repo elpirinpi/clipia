@@ -12,6 +12,13 @@ from clipia.cache import (
                                 escribir_cache,
                                 leer_cache,
 )
+from clipia.cola import (
+                                ColaExportacion,
+                                ResultadoClip,
+                                TrabajoExportacion,
+                                workers_efectivos,
+                                workers_recomendados,
+)
 from clipia.descarga import descargar_youtube
 from clipia.encoder import (
                                 descripcion_encoder,
@@ -19,6 +26,7 @@ from clipia.encoder import (
                                 opciones_encoder,
 )
 from clipia.exportacion import (
+                                ExportacionCancelada,
                                 exportar_clip,
                                 generar_miniatura,
                                 generar_vista_previa,
@@ -31,7 +39,11 @@ from clipia.momentos import (
                                 _traslapan,
                                 detectar_momentos,
 )
-from clipia.rostros import _expresion_rostros, detectar_rostros
+from clipia.rostros import (
+    _expresion_rostros,
+    detectar_rostros,
+    detectar_rostros_con_limite,
+)
 from clipia.subtitulos import (
                                 PLANTILLA_ASS,
                                 _escapar_ruta_subtitulos,
@@ -57,6 +69,10 @@ __all__ = [
     "MODELOS_WHISPER",
     "PALABRAS_GANCHO",
     "PLANTILLA_ASS",
+    "ColaExportacion",
+    "ExportacionCancelada",
+    "ResultadoClip",
+    "TrabajoExportacion",
     "_elegir_dispositivo",
     "_escapar_ruta_subtitulos",
     "_expresion_rostros",
@@ -73,6 +89,7 @@ __all__ = [
     "detectar_encoder",
     "detectar_momentos",
     "detectar_rostros",
+    "detectar_rostros_con_limite",
     "escribir_cache",
     "exportar_clip",
     "formato_ass",
@@ -87,4 +104,6 @@ __all__ = [
     "opciones_encoder",
     "ram_total_gb",
     "transcribir",
+    "workers_efectivos",
+    "workers_recomendados",
 ]

@@ -16,6 +16,9 @@ VALORES_DEFECTO: dict = {
     "estilo_subtitulos": "Shorts clásico",
     "encoder": "auto",
     "seguir_rostros": True,
+    # Workers de exportación: 0 = automático (1 con libx264, 2 con
+    # codificador por hardware).
+    "workers_exportacion": 0,
 }
 
 

@@ -9,15 +9,27 @@ from .cache import (
     escribir_cache,
     leer_cache,
 )
+from .cola import (
+    ColaExportacion,
+    ResultadoClip,
+    TrabajoExportacion,
+    workers_efectivos,
+    workers_recomendados,
+)
 from .descarga import descargar_youtube
 from .encoder import (
     descripcion_encoder,
     detectar_encoder,
     opciones_encoder,
 )
-from .exportacion import exportar_clip, generar_miniatura, generar_vista_previa
+from .exportacion import (
+    ExportacionCancelada,
+    exportar_clip,
+    generar_miniatura,
+    generar_vista_previa,
+)
 from .momentos import detectar_momentos
-from .rostros import detectar_rostros
+from .rostros import detectar_rostros, detectar_rostros_con_limite
 from .subtitulos import generar_subtitulos_ass
 from .transcripcion import (
     IDIOMAS,
@@ -32,6 +44,10 @@ from .utilidades import formato_ass, formato_hora, obtener_duracion
 __all__ = [
     "IDIOMAS",
     "MODELOS_WHISPER",
+    "ColaExportacion",
+    "ExportacionCancelada",
+    "ResultadoClip",
+    "TrabajoExportacion",
     "carpeta_cache",
     "clave_archivo",
     "descargar_youtube",
@@ -39,6 +55,7 @@ __all__ = [
     "detectar_encoder",
     "detectar_momentos",
     "detectar_rostros",
+    "detectar_rostros_con_limite",
     "escribir_cache",
     "exportar_clip",
     "formato_ass",
@@ -53,4 +70,6 @@ __all__ = [
     "opciones_encoder",
     "ram_total_gb",
     "transcribir",
+    "workers_efectivos",
+    "workers_recomendados",
 ]

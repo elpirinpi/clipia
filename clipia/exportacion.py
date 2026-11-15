@@ -3,10 +3,44 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable
 
 from .encoder import detectar_encoder, opciones_encoder
 from .rostros import _expresion_rostros
+
+
+class ExportacionCancelada(Exception):
+    """La exportación se canceló (el usuario pulsó Cancelar o la app
+    se está cerrando). El archivo parcial ya se borró."""
+
+
+def _vigilar_cancelacion(proceso: subprocess.Popen,
+                         cancelar: threading.Event | None) -> None:
+    """Hilo que mata el ffmpeg si se marca `cancelar`.
+
+    Hace falta un hilo aparte porque el bucle que lee el avance puede
+    quedarse bloqueado esperando la siguiente línea: sin él, la
+    cancelación tardaría en notarse. Con él, el proceso muere en
+    cuanto se marca el evento (mucho menos de 2 s).
+    """
+    if cancelar is None:
+        return
+
+    def vigilar() -> None:
+        # Espera el evento sin bloquear para siempre: si el proceso
+        # termina solo, el hilo termina también (no se acumulan hilos
+        # esperando en exportaciones ya terminadas).
+        while proceso.poll() is None:
+            if cancelar.wait(timeout=0.2):
+                if proceso.poll() is None:
+                    try:
+                        proceso.kill()
+                    except OSError:
+                        pass
+                return
+
+    threading.Thread(target=vigilar, daemon=True).start()
 
 
 def exportar_clip(ruta_video: str, inicio: float, fin: float,
@@ -15,7 +49,8 @@ def exportar_clip(ruta_video: str, inicio: float, fin: float,
                   rostros: list[tuple[float, float]] | None = None,
                   ancho: int = 1080, alto: int = 1920,
                   con_subtitulos: bool = True,
-                  encoder: str | None = None) -> str:
+                  encoder: str | None = None,
+                  cancelar: threading.Event | None = None) -> str:
     """Exporta un clip vertical con subtítulos quemados.
 
     `progreso` es una función opcional que recibe un valor 0.0-1.0.
@@ -23,8 +58,10 @@ def exportar_clip(ruta_video: str, inicio: float, fin: float,
     recorte vertical sigue la cara en vez de centrarse. `ancho`/`alto`
     son el tamaño de salida (1080x1920 por defecto). `encoder` es el
     codificador concreto (p. ej. "h264_nvenc"); con None se autodetecta
-    el mejor disponible (hardware o libx264). Devuelve la ruta del
-    clip exportado.
+    el mejor disponible (hardware o libx264). Si `cancelar` (un
+    threading.Event) se marca durante la exportación, se mata el
+    ffmpeg, se borra el archivo parcial y se lanza
+    ExportacionCancelada. Devuelve la ruta del clip exportado.
     """
     duracion = max(0.1, fin - inicio)
     encoder_usado = encoder or detectar_encoder("auto")
@@ -72,6 +109,7 @@ def exportar_clip(ruta_video: str, inicio: float, fin: float,
             comando, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, cwd=tmp_ass.name if tmp_ass else None,
         )
+        _vigilar_cancelacion(proceso, cancelar)
         cola_error = ""
         if proceso.stdout is not None:
             for linea in proceso.stdout:
@@ -87,6 +125,15 @@ def exportar_clip(ruta_video: str, inicio: float, fin: float,
                 elif linea.startswith("progress=end") and progreso:
                     progreso(1.0)
         proceso.wait()
+        if cancelar is not None and cancelar.is_set():
+            # El usuario canceló: borrar el parcial y avisar con la
+            # excepción propia (no es un error de ffmpeg).
+            try:
+                if os.path.exists(ruta_salida):
+                    os.remove(ruta_salida)
+            except OSError:
+                pass
+            raise ExportacionCancelada("exportación cancelada")
         if proceso.returncode != 0:
             raise RuntimeError("ffmpeg falló al exportar el clip:\n%s"
                                % cola_error.strip()[-2000:])
@@ -114,9 +161,10 @@ def generar_vista_previa(ruta_video: str, inicio: float, fin: float,
                          ruta_salida: str,
                          rostros: list[tuple[float, float]] | None = None,
                          progreso: Callable[[float], None] | None = None,
-                         encoder: str | None = None) -> str:
+                         encoder: str | None = None,
+                         cancelar: threading.Event | None = None) -> str:
     """Genera una vista previa rápida (540x960, sin subtítulos)."""
     return exportar_clip(ruta_video, inicio, fin, None, ruta_salida,
                          progreso=progreso, rostros=rostros,
                          ancho=540, alto=960, con_subtitulos=False,
-                         encoder=encoder)
+                         encoder=encoder, cancelar=cancelar)

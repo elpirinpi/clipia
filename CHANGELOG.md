@@ -58,6 +58,50 @@ Todos los cambios importantes de cada versión. El formato sigue
   dependencias dentro; `run.bat` y `diagnostico.bat` prefieren el
   venv y caen al Python global si no existe.
 - CI en GitHub Actions (`windows-latest`): ruff + pytest en cada push.
+
+### Fase 1: rendimiento (13-11-2026)
+
+- **Encoder por hardware autodetectado** (`clipia/encoder.py`): al
+  arrancar, la app prueba con un video de 1 s los codificadores
+  `h264_nvenc` → `h264_qsv` → `h264_amf` y usa el primero que
+  funcione; si ninguno funciona o el elegido falla, vuelve a
+  `libx264` (CPU). El pie de la ventana muestra cuál se está usando
+  y en **Ajustes** se puede elegir uno a mano (se guarda en la
+  configuración). En un PC sin GPU compatible no cambia nada: sigue
+  usando la CPU como antes.
+- **Transcripción más rápida** (`clipia/transcripcion.py`): usa
+  `BatchedInferencePipeline` de faster-whisper (lotes de 8 en CPU,
+  16 en GPU) y el modelo queda cacheado en memoria (singleton, hasta
+  2 modelos): analizar un segundo video ya no recarga el modelo. En
+  **Ajustes** se elige el modelo (tiny/base/small/medium/large-v3,
+  con aviso si el equipo no tiene RAM suficiente) y el idioma del
+  audio (español, inglés, portugués, francés, italiano, alemán o
+  autodetectar; por defecto español).
+- **Caché en disco** (`clipia/cache.py`): la transcripción y la
+  detección de rostros se guardan en `%LOCALAPPDATA%/ClipIA/cache`
+  con una clave por archivo (ruta + tamaño + fecha de modificación)
+  y parámetros. Reanalizar el mismo video es casi instantáneo y los
+  rostros ya no se detectan dos veces (vista previa y exportación).
+  Límite de 500 MB con poda automática de las entradas más antiguas.
+- **Cola de exportación** (`clipia/cola.py`): los clips se exportan
+  con workers configurables (automático: 1 con CPU, 2 con
+  codificador por hardware; ajustable a 1–3 en Ajustes). La barra
+  muestra el avance global, el clip en curso y el tiempo estimado
+  restante. El botón **Cancelar** detiene el lote: mata el ffmpeg
+  en curso en menos de 2 s, borra el archivo parcial y no empieza
+  los clips pendientes. Un clip que falla se reintenta una vez sin
+  tumbar el lote; al final se informa cuáles fallaron y por qué.
+- **Miniaturas en paralelo**: las miniaturas de la lista de clips se
+  generan con 4 workers a la vez en vez de una tras otra.
+- **Al cerrar la app no quedan ffmpeg huérfanos**
+  (`clipia/procesos.py`): cada ffmpeg de larga duración (exportación,
+  detección de rostros, extracción de audio) se registra al arrancar;
+  al cerrar, la app cancela la exportación en curso y termina todos
+  los procesos registrados.
+- La suite pytest crece a 144 tests (encoder con fallback, caché de
+  transcripción y rostros, cancelación que mata el proceso y borra
+  el parcial, reintento por clip, cierre sin huérfanos, miniaturas
+  en paralelo, workers de la cola).
 - `.gitignore` y licencia MIT.
 - `test_pipeline.py` ampliado: detecta rostros en el primer clip,
   genera su vista previa (540x960), verifica la duración pedida vs

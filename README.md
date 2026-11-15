@@ -26,7 +26,27 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
    blanco con borde negro, abajo al centro), H.264 + AAC. Con la
    opción «Seguir rostros» activada, el recorte vertical sigue la
    cara del hablante en vez de centrarse siempre en la imagen; si no
-   se detecta ninguna cara, usa el centro como antes.
+   se detecta ninguna cara, usa el centro como antes. La exportación
+   va por una cola con avance global y tiempo estimado; el botón
+   **Cancelar** la detiene (borra el archivo parcial) y un clip que
+   falla se reintenta una vez sin tumbar el resto. Si tu PC tiene
+   GPU NVIDIA, Intel o AMD compatible, la app usa su codificador por
+   hardware automáticamente; si no, usa la CPU.
+
+## Ajustes
+
+El botón **⚙ Ajustes** permite elegir:
+
+- **Codificador de video**: automático (prueba el hardware y usa la
+  CPU si no hay codificador compatible) o uno concreto (NVENC, Quick
+  Sync, AMF, libx264).
+- **Modelo de voz**: tiny, base (por defecto), small, medium o
+  large-v3. Los modelos grandes son más precisos pero necesitan más
+  RAM y tardan más; la app avisa si tu PC no tiene RAM suficiente.
+- **Idioma del audio**: español (por defecto), inglés, portugués,
+  francés, italiano, alemán o autodetectar.
+- **Clips a exportar a la vez**: automático (1 con CPU, 2 con
+  codificador por hardware) o 1–3 fijos.
 
 ## Requisitos
 
@@ -73,17 +93,27 @@ español, CPU de 4 núcleos, modelo Whisper base, 13-11-2026):
 
 | Fase | Tiempo medido |
 |---|---|
-| Transcripción (2:57 de audio) | ~26 s (unas 6.8 veces más rápido que tiempo real) |
+| Transcripción (2:57 de audio, 1ª vez) | ~20 s (unas 8.6 veces más rápido que tiempo real) |
+| Transcripción (modelo ya cargado) | ~16 s |
+| Transcripción (video ya analizado, caché) | ~0.3 s |
 | Detección de momentos | menos de 1 s |
-| Detección de rostros (clip de 60 s, sin caras) | ~10 s |
-| Vista previa (clip de 60 s, 540x960) | ~24 s |
-| Exportar un clip de 60 s | ~50 s |
-| Exportar un clip de 30 s | ~27 s |
+| Detección de rostros (clip de 30 s, con caras) | ~2 s (la 2ª vez, caché: instantánea) |
+| Vista previa (clip de 60 s, 540x960) | ~26 s |
+| Exportar un clip de 60 s | ~49 s |
+| Exportar un clip de 30 s | ~25 s |
+
+La transcripción y la detección de rostros se guardan en caché: si
+vuelves a analizar el mismo video, la transcripción sale de la caché
+en menos de un segundo y los rostros no se vuelven a detectar.
 
 En el PC de destino (Xeon E5-2680 v4 de 14 núcleos, 24 GB RAM) la
 transcripción y la exportación deberían ser más rápidas. Con una GPU
 compatible con CUDA la transcripción es mucho más rápida todavía (la
-app usa la GPU automáticamente si está disponible; si no, usa la CPU).
+app usa la GPU automáticamente si está disponible; si no, usa la CPU),
+y con una GPU NVIDIA, Intel o AMD compatible la exportación usa el
+codificador por hardware (NVENC, Quick Sync o AMF), mucho más rápido
+que libx264 en CPU. En este servidor de desarrollo no hay GPU, así
+que los tiempos de GPU están pendientes de medir en el PC de destino.
 
 La primera vez que se analiza un video, la app descarga el modelo de
 voz base (~150 MB).
@@ -93,7 +123,7 @@ voz base (~150 MB).
 | Archivo | Descripción |
 |---|---|
 | `main.py` | Interfaz gráfica (CustomTkinter, tema oscuro) |
-| `clipia/` | Núcleo dividido en módulos: `transcripcion`, `momentos`, `subtitulos`, `rostros`, `exportacion`, `descarga`, `utilidades`, `config`, `logs` |
+| `clipia/` | Núcleo dividido en módulos: `transcripcion`, `momentos`, `subtitulos`, `rostros`, `exportacion`, `descarga`, `utilidades`, `config`, `logs`, `encoder`, `cache`, `cola`, `procesos` |
 | `clipia_core.py` | Fachada compatible: re-exporta la API del paquete |
 | `test_pipeline.py` | Prueba de punta a punta sin interfaz gráfica |
 | `tests/` | Suite pytest (unitarios, GUI, e2e con video sintético) |
@@ -176,8 +206,10 @@ Cada push a `main` corre ruff y la suite en GitHub Actions
 ## v2.0 (en desarrollo)
 
 La v2.0 se está construyendo por fases: Fase 0 (cimientos: corrección
-de errores, paquete `clipia/`, logging, configuración, tests y CI),
-Fase 1 (rendimiento: encoder por hardware, caché, cola de exportación),
-Fase 2 (calidad de clips: cortes en frases completas, subtítulos
-karaoke, normalización de audio), Fase 3 (editor de clips y mejoras de
-interfaz) y Fase 4 (instalador). Los detalles están en `CHANGELOG.md`.
+de errores, paquete `clipia/`, logging, configuración, tests y CI)
+y Fase 1 (rendimiento: encoder por hardware, caché, cola de
+exportación, cancelación real) ya están terminadas. Quedan la Fase 2
+(calidad de clips: cortes en frases completas, subtítulos karaoke,
+normalización de audio), la Fase 3 (editor de clips y mejoras de
+interfaz) y la Fase 4 (instalador). Los detalles están en
+`CHANGELOG.md`.

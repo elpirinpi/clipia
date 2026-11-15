@@ -46,7 +46,9 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
    - instala ffmpeg con winget si no lo tienes;
    - instala Deno con winget si no lo tienes (lo usa yt-dlp para
      descargar de YouTube sin errores);
-   - instala las dependencias (`pip install -r requirements.txt`).
+   - crea el entorno virtual `.venv` y instala las dependencias
+     dentro de él (`pip install -r requirements.txt`). La app usa
+     siempre su propio entorno, sin tocar el Python global.
 3. Si Python se instaló en ese momento, cierra la ventana y vuelve a
    ejecutar `setup.bat` para terminar (Windows necesita refrescar el
    PATH).
@@ -67,14 +69,16 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
 ## Rendimiento
 
 Medido en la prueba de punta a punta (video de 2:57, 1920x1080, voz en
-español, CPU de 4 núcleos, modelo Whisper base):
+español, CPU de 4 núcleos, modelo Whisper base, 13-11-2026):
 
 | Fase | Tiempo medido |
 |---|---|
-| Transcripción (2:57 de audio) | ~38 s (unas 4.6 veces más rápido que tiempo real) |
+| Transcripción (2:57 de audio) | ~26 s (unas 6.8 veces más rápido que tiempo real) |
 | Detección de momentos | menos de 1 s |
-| Exportar un clip de 60 s | ~57 s |
-| Exportar un clip de 30 s | ~30 s |
+| Detección de rostros (clip de 60 s, sin caras) | ~10 s |
+| Vista previa (clip de 60 s, 540x960) | ~24 s |
+| Exportar un clip de 60 s | ~50 s |
+| Exportar un clip de 30 s | ~27 s |
 
 En el PC de destino (Xeon E5-2680 v4 de 14 núcleos, 24 GB RAM) la
 transcripción y la exportación deberían ser más rápidas. Con una GPU
@@ -89,11 +93,38 @@ voz base (~150 MB).
 | Archivo | Descripción |
 |---|---|
 | `main.py` | Interfaz gráfica (CustomTkinter, tema oscuro) |
-| `clipia_core.py` | Transcripción, detección de momentos, subtítulos, seguimiento de rostros, exportación, vista previa, descarga |
+| `clipia/` | Núcleo dividido en módulos: `transcripcion`, `momentos`, `subtitulos`, `rostros`, `exportacion`, `descarga`, `utilidades`, `config`, `logs` |
+| `clipia_core.py` | Fachada compatible: re-exporta la API del paquete |
 | `test_pipeline.py` | Prueba de punta a punta sin interfaz gráfica |
+| `tests/` | Suite pytest (unitarios, GUI, e2e con video sintético) |
 | `requirements.txt` | Dependencias con versiones fijadas |
+| `requirements-dev.txt` | Dependencias de desarrollo (pytest, ruff) |
+| `pyproject.toml` | Configuración de ruff y pytest |
+| `.github/workflows/ci.yml` | CI en Windows (ruff + pytest) |
 | `setup.bat` | Instalador para Windows |
 | `run.bat` | Lanzador de la app |
+| `diagnostico.bat` | Diagnóstico de la instalación |
+| `LICENSE` | Licencia MIT |
+| `CHANGELOG.md` | Historial de cambios |
+
+## Desarrollo
+
+```bat
+REM Instalar las dependencias de desarrollo (dentro del venv):
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+
+REM Lint:
+.venv\Scripts\python.exe -m ruff check main.py clipia_core.py clipia/ test_pipeline.py tests/
+
+REM Tests:
+.venv\Scripts\python.exe -m pytest tests/ -q
+
+REM Prueba de punta a punta:
+.venv\Scripts\python.exe test_pipeline.py --video video_prueba.mp4 --salida ./salida_prueba
+```
+
+Cada push a `main` corre ruff y la suite en GitHub Actions
+(`windows-latest`).
 
 ## Solución de problemas
 
@@ -142,11 +173,11 @@ voz base (~150 MB).
   desde el servidor donde se desarrolló la app porque YouTube
   bloquea esa red; en una conexión casera normalmente funciona.
 
-## Ideas para la v2
+## v2.0 (en desarrollo)
 
-- Puntuación de momentos con un LLM local (vía Ollama): elegir los
-  clips por contenido y no solo por densidad de habla y palabras gancho.
-- Subtítulos con resaltado palabra por palabra (estilo karaoke).
-- Exportación en lote con cola y cancelación.
-- Descarga de YouTube con cookies del navegador (para cuando YouTube
-  pide verificar que no eres un bot).
+La v2.0 se está construyendo por fases: Fase 0 (cimientos: corrección
+de errores, paquete `clipia/`, logging, configuración, tests y CI),
+Fase 1 (rendimiento: encoder por hardware, caché, cola de exportación),
+Fase 2 (calidad de clips: cortes en frases completas, subtítulos
+karaoke, normalización de audio), Fase 3 (editor de clips y mejoras de
+interfaz) y Fase 4 (instalador). Los detalles están en `CHANGELOG.md`.

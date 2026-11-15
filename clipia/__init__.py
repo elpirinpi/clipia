@@ -52,7 +52,12 @@ from .transcripcion import (
     ram_total_gb,
     transcribir,
 )
-from .utilidades import formato_ass, formato_hora, obtener_duracion
+from .utilidades import (
+    formato_ass,
+    formato_hora,
+    obtener_duracion,
+    tiene_audio,
+)
 
 __all__ = [
     "ESTILO_DEFECTO",
@@ -95,6 +100,7 @@ __all__ = [
     "ram_total_gb",
     "registrar",
     "rerank_ollama",
+    "tiene_audio",
     "transcribir",
     "workers_efectivos",
     "workers_recomendados",

@@ -55,3 +55,20 @@ def obtener_duracion(ruta_video: str) -> float:
         pass
     raise RuntimeError("ffprobe no pudo determinar la duración de: %s"
                        % ruta_video)
+
+
+def tiene_audio(ruta_video: str) -> bool:
+    """True si el video tiene al menos una pista de audio.
+
+    Se usa antes de añadir filtros de audio: un -af sobre un video sin
+    audio hace fallar a ffmpeg.
+    """
+    resultado = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a",
+         "-show_entries", "stream=index",
+         "-of", "csv=p=0", ruta_video],
+        capture_output=True, text=True, timeout=60,
+    )
+    if resultado.returncode != 0:
+        return False
+    return bool(resultado.stdout.strip())

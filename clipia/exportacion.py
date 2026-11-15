@@ -9,6 +9,12 @@ from collections.abc import Callable
 from .encoder import detectar_encoder, opciones_encoder
 from .procesos import olvidar, registrar
 from .rostros import _expresion_rostros
+from .utilidades import tiene_audio
+
+# Normalización de volumen en export: -14 LUFS (el nivel de
+# TikTok/Reels/Shorts), una sola pasada, ganancia lineal (sin bombeo
+# dinámico en la voz).
+FILTRO_LOUDNORM = "loudnorm=I=-14:TP=-1.5:LRA=11:linear=true"
 
 
 class ExportacionCancelada(Exception):
@@ -96,6 +102,13 @@ def exportar_clip(ruta_video: str, inicio: float, fin: float,
         "-map", "0:v:0", "-map", "0:a:0?",
         *opciones_encoder(encoder_usado),
         "-pix_fmt", "yuv420p",
+    ]
+    # Fase 2: normalizar el audio a -14 LUFS. Solo si el video tiene
+    # audio: un -af sobre un video sin pista de audio hace fallar a
+    # ffmpeg.
+    if tiene_audio(ruta_video):
+        comando += ["-af", FILTRO_LOUDNORM]
+    comando += [
         "-c:a", "aac", "-b:a", "128k",
         "-movflags", "+faststart",
         "-progress", "pipe:1", "-nostats",

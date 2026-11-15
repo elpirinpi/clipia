@@ -78,7 +78,12 @@ from clipia.transcripcion import (
                                 ram_total_gb,
                                 transcribir,
 )
-from clipia.utilidades import formato_ass, formato_hora, obtener_duracion
+from clipia.utilidades import (
+                                formato_ass,
+                                formato_hora,
+                                obtener_duracion,
+                                tiene_audio,
+)
 
 __all__ = [
     "DURACIONES_VENTANA",
@@ -133,6 +138,7 @@ __all__ = [
     "ram_total_gb",
     "registrar",
     "rerank_ollama",
+    "tiene_audio",
     "transcribir",
     "workers_efectivos",
     "workers_recomendados",

@@ -11,8 +11,10 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
 ## Qué hace
 
 1. **Cargar** — Elige un archivo de video (mp4, mkv, mov, webm) o pega
-   una URL de YouTube (se descarga en MP4, máximo 1080p). También
-   puedes **arrastrar** uno o varios videos directamente sobre la
+   una URL de YouTube (se descarga en MP4, máximo 1080p). Si YouTube
+   bloquea la descarga pidiendo verificar que no eres un bot, elige
+   tu navegador en Ajustes → «Cookies de YouTube». También puedes
+   **arrastrar** uno o varios videos directamente sobre la
    ventana (uno solo se carga; varios van a la cola multi-video),
    pegar una URL con el botón «Pegar URL» o añadir varios videos a
    la «Cola de videos» para analizarlos uno tras otro.
@@ -21,7 +23,9 @@ Instagram de [@varonsandro1](https://www.instagram.com/reel/DfnzxnFR-1u/).
    de 30 a 90 segundos, puntuados por densidad de habla, exclamaciones,
    preguntas y palabras gancho (ponderadas por rareza dentro del
    propio video). Cada clip empieza y termina en una frontera de
-   frase: nunca corta una palabra a la mitad.
+   frase: nunca corta una palabra a la mitad. La primera vez,
+   descarga el modelo de voz (~150 MB) mostrando su avance real en
+   la barra de estado.
 3. **Clips** — Revisa la lista con una miniatura vertical de cada
    momento, marca los que quieres, usa «Seleccionar todo» o crea un
    clip manual con hora de inicio y fin. Cada clip tiene un botón
@@ -81,6 +85,13 @@ El botón **⚙ Ajustes** permite elegir:
 - **Lote de transcripción**: cuántas frases transcribe a la vez
   (Automático, 4, 8 o 16). Automático elige según tu PC (16 con
   GPU, 8 con CPU); un lote mayor usa más RAM.
+- **Cookies de YouTube**: navegador del que yt-dlp lee las cookies
+  de YouTube (Sin cookies, Chrome, Edge o Firefox). Si YouTube
+  bloquea una descarga pidiendo verificar que no eres un bot, elige
+  el navegador donde tengas sesión iniciada en YouTube.
+- **Actualizar yt-dlp**: botón que actualiza el descargador de
+  YouTube (YouTube cambia a menudo y un yt-dlp viejo deja de
+  funcionar). Muestra la versión instalada.
 
 ## IA local (Ollama, opcional)
 
@@ -101,11 +112,25 @@ app sigue con la heurística; nunca se queda esperando.
 ## Requisitos
 
 - Windows 10/11 (64 bits)
-- Conexión a internet solo para la instalación y para descargar videos
-  de YouTube. La transcripción y la exportación son locales.
-- ~1.2 GB de espacio libre (dependencias + modelo de voz de ~150 MB).
+- Conexión a internet solo para la instalación, para descargar videos
+  de YouTube y para la primera descarga del modelo de voz (~150 MB).
+  La transcripción y la exportación son locales.
+- ~1.5 GB de espacio libre (app + ffmpeg + modelo de voz).
 
-## Instalación
+## Instalación (recomendado: instalador)
+
+1. Descarga **`ClipIA-Setup-2.0.0.exe`** desde la página de
+   releases del repositorio
+   (https://github.com/elpirinpi/clipia/releases).
+2. Haz doble clic y sigue el asistente. Se instala por usuario (sin
+   permisos de administrador) en `%LOCALAPPDATA%\Programs\ClipIA`,
+   con acceso directo en el menú Inicio. No necesitas instalar
+   Python, ffmpeg ni nada más: todo va dentro.
+3. Si Windows SmartScreen avisa de que el instalador no tiene firma
+   reconocida, pulsa «Más información» → «Ejecutar de todas formas»
+   (el instalador no está firmado con certificado de pago).
+
+## Instalación alternativa (desde el código, para desarrollo)
 
 1. Descarga o copia la carpeta `clipia` a tu PC (por ejemplo,
    `C:\ClipIA`).
@@ -125,13 +150,14 @@ app sigue con la heurística; nunca se queda esperando.
 
 ## Cómo usarla
 
-1. Haz doble clic en **`run.bat`**.
+1. Abre ClipIA desde el menú Inicio (o con **`run.bat`** si la
+   instalaste desde el código).
 2. Elige un video con «Examinar…» o pega una URL de YouTube.
    También puedes arrastrar el video sobre la ventana o pegar la
    URL con «Pegar URL». Para varios videos, añádelos a la «Cola de
    videos» y pulsa «Analizar cola».
 3. Pulsa **«Analizar video»**. La primera vez descarga el modelo de
-   voz (~150 MB, unos segundos con buena conexión).
+   voz (~150 MB) mostrando su avance en la barra de estado.
 4. Marca los clips que quieres (puedes previsualizar cada uno con
    «▶ Vista previa» o ajustar sus límites con «✎ Editar») y pulsa
    **«Descargar clips»**. Si el video es una persona hablando, deja
@@ -147,13 +173,13 @@ español, CPU de 4 núcleos, modelo Whisper base, 13-11-2026):
 
 | Fase | Tiempo medido |
 |---|---|
-| Transcripción (2:57 de audio, 1ª vez) | ~20 s (unas 8.6 veces más rápido que tiempo real) |
+| Transcripción (2:57 de audio, 1ª vez) | ~21 s (unas 8 veces más rápido que tiempo real) |
 | Transcripción (modelo ya cargado) | ~16 s |
-| Transcripción (video ya analizado, caché) | ~0.3 s |
+| Transcripción (video ya analizado, caché) | ~0.1 s |
 | Detección de momentos | menos de 1 s |
 | Detección de rostros (clip de 30 s, con caras) | ~2 s (la 2ª vez, caché: instantánea) |
-| Vista previa (clip de 60 s, 540x960, con subtítulos) | ~27 s |
-| Exportar un clip de 60 s | ~52 s (0.86x tiempo real) |
+| Vista previa (clip de 60 s, 540x960, con subtítulos) | ~22 s |
+| Exportar un clip de 60 s | ~50 s (0.84x tiempo real) |
 | Exportar un clip de 30 s | ~25 s |
 
 La transcripción y la detección de rostros se guardan en caché: si
@@ -170,9 +196,10 @@ que libx264 en CPU. En este servidor de desarrollo no hay GPU, así
 que los tiempos de GPU están pendientes de medir en el PC de destino.
 
 La primera vez que se analiza un video, la app descarga el modelo de
-voz base (~150 MB). La primera vez que se detectan rostros, descarga
-además el modelo YuNet (~230 KB, con verificación de integridad); sin
-conexión, usa el detector Haar de siempre.
+voz base (~150 MB) mostrando su avance en la barra de estado. La
+primera vez que se detectan rostros, descarga además el modelo YuNet
+(~230 KB, con verificación de integridad) si el instalador no lo
+trajo ya empaquetado; sin conexión, usa el detector Haar de siempre.
 
 ## Archivos del proyecto
 
@@ -181,14 +208,17 @@ conexión, usa el detector Haar de siempre.
 | `main.py` | Interfaz gráfica (CustomTkinter, tema oscuro) |
 | `clipia/` | Núcleo dividido en módulos: `transcripcion`, `momentos`, `subtitulos`, `rostros`, `exportacion`, `descarga`, `utilidades`, `config`, `logs`, `encoder`, `cache`, `cola`, `procesos`, `ollama`, `editor`, `proyecto` |
 | `clipia_core.py` | Fachada compatible: re-exporta la API del paquete |
+| `clipia.spec` | Spec de PyInstaller (one-folder, solo CPU) |
+| `instalador/clipia.iss` | Script de Inno Setup (instalador único .exe) |
 | `test_pipeline.py` | Prueba de punta a punta sin interfaz gráfica |
 | `tests/` | Suite pytest (unitarios, GUI, e2e con video sintético) |
 | `requirements.txt` | Dependencias con versiones fijadas |
 | `requirements-dev.txt` | Dependencias de desarrollo (pytest, ruff) |
 | `pyproject.toml` | Configuración de ruff y pytest |
 | `.github/workflows/ci.yml` | CI en Windows (ruff + pytest) |
-| `setup.bat` | Instalador para Windows |
-| `run.bat` | Lanzador de la app |
+| `.github/workflows/build.yml` | Build del instalador en cada tag `v*` |
+| `setup.bat` | Instalador para Windows (modo desarrollo) |
+| `run.bat` | Lanzador de la app (modo desarrollo) |
 | `diagnostico.bat` | Diagnóstico de la instalación |
 | `LICENSE` | Licencia MIT |
 | `CHANGELOG.md` | Historial de cambios |
@@ -210,15 +240,22 @@ REM Prueba de punta a punta:
 ```
 
 Cada push a `main` corre ruff y la suite en GitHub Actions
-(`windows-latest`).
+(`windows-latest`). Cada push de un tag `v*` (o un lanzamiento manual
+desde la pestaña Actions) compila el instalador con PyInstaller +
+Inno Setup y lo sube como artefacto del workflow
+(`.github/workflows/build.yml`).
 
 ## Solución de problemas
 
+- **Windows SmartScreen avisa al abrir el instalador**: el
+  instalador no está firmado con certificado de pago. Pulsa «Más
+  información» → «Ejecutar de todas formas».
 - **La ventana se cierra sin abrir la app**: ejecuta
   `diagnostico.bat` y revisa qué línea falla (Python, customtkinter,
   tkinter, faster-whisper, yt-dlp o ffmpeg). También puedes abrir
   `cmd` en la carpeta y ejecutar `python main.py` para ver el error
-  completo.
+  completo. En el instalador, revisa el log en
+  `%LOCALAPPDATA%\ClipIA\logs\clipia.log`.
 - **«python no se reconoce»**: cierra la ventana y ejecuta `setup.bat`
   de nuevo; si sigue fallando, instala Python 3.12 desde
   python.org marcando «Add Python to PATH».
@@ -256,22 +293,32 @@ Cada push a `main` corre ruff y la suite en GitHub Actions
   compatible con CUDA es mucho más rápida.
 - **Los subtítulos no se ven**: el ffmpeg instalado debe incluir
   libass (el de `Gyan.FFmpeg` vía winget lo incluye).
-- **YouTube pide verificar que no eres un bot**: YouTube a veces
-  bloquea las descargas automáticas. En ese caso, descarga el video
-  con tu navegador (o con otra herramienta) y usa el archivo local
-  con «Examinar…». La descarga directa con yt-dlp no pudo probarse
+- **«No se pudo descargar el modelo de voz»**: la primera descarga
+  del modelo necesita internet. Revisa tu conexión y vuelve a pulsar
+  «Analizar video»; la descarga se reanuda desde la caché.
+- **YouTube pide verificar que no eres un bot**: inicia sesión en
+  YouTube en tu navegador, elige ese navegador en Ajustes →
+  «Cookies de YouTube» y reintenta. Si sigue fallando, pulsa
+  «Actualizar yt-dlp» en Ajustes y reintenta; en último caso,
+  descarga el video con tu navegador y usa el archivo local con
+  «Examinar…». La descarga directa con yt-dlp no pudo probarse
   desde el servidor donde se desarrolló la app porque YouTube
   bloquea esa red; en una conexión casera normalmente funciona.
+- **Una descarga de YouTube falla con un error raro**: pulsa
+  «Actualizar yt-dlp» en Ajustes (YouTube cambia a menudo y un
+  yt-dlp viejo deja de entenderlo) y reintenta. El mensaje de error
+  de la app dice qué hacer en cada caso.
 
-## v2.0 (en desarrollo)
+## v2.0.0
 
-La v2.0 se está construyendo por fases: Fase 0 (cimientos: corrección
-de errores, paquete `clipia/`, logging, configuración, tests y CI),
-Fase 1 (rendimiento: encoder por hardware, caché, cola de
-exportación, cancelación real), Fase 2 (calidad de clips: cortes en
-frases completas, subtítulos karaoke, normalización de audio,
-detección YuNet, reordenar con IA local) y Fase 3 (UX de producto:
+La v2.0 se construyó por fases, todas terminadas: Fase 0 (cimientos:
+corrección de errores, paquete `clipia/`, logging, configuración,
+tests y CI), Fase 1 (rendimiento: encoder por hardware, caché, cola
+de exportación, cancelación real), Fase 2 (calidad de clips: cortes
+en frases completas, subtítulos karaoke, normalización de audio,
+detección YuNet, reordenar con IA local), Fase 3 (UX de producto:
 editor de clips, vista previa con subtítulos, cola multi-video,
-arrastrar y soltar, proyectos, ajustes ampliados) ya están
-terminadas. Queda la Fase 4 (instalador). Los detalles están en
-`CHANGELOG.md`.
+arrastrar y soltar, proyectos, ajustes ampliados) y Fase 4
+(distribución: instalador único `.exe`, descarga de YouTube robusta
+con cookies y actualización de yt-dlp, modelo de voz con progreso
+visible). Los detalles están en `CHANGELOG.md`.

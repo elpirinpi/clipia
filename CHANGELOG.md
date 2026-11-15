@@ -59,6 +59,50 @@ Todos los cambios importantes de cada versión. El formato sigue
   venv y caen al Python global si no existe.
 - CI en GitHub Actions (`windows-latest`): ruff + pytest en cada push.
 
+### Fase 4: distribución (13-11-2026)
+
+- **Instalador de Windows**: PyInstaller one-folder (`clipia.spec`,
+  solo CPU, sin librerías CUDA) + Inno Setup
+  (`instalador/clipia.iss`): un único `ClipIA-Setup-2.0.0.exe` que
+  instala la app por usuario (sin permisos de administrador) en
+  `%LOCALAPPDATA%\Programs\ClipIA`, con acceso directo en el menú
+  Inicio y desinstalador. El usuario final ya NO instala Python,
+  winget ni ffmpeg a mano: ffmpeg y ffprobe van embebidos junto al
+  `.exe` (la app añade su carpeta al PATH al arrancar) y el modelo
+  YuNet va empaquetado (si está junto al `.exe`, no se descarga).
+- **Build en GitHub Actions** (`.github/workflows/build.yml`): en
+  cada push de un tag `v*` (o al lanzarlo a mano) compila el
+  instalador en `windows-latest` (PyInstaller 6.22.3, ffmpeg de
+  Gyan.dev, YuNet con verificación SHA-256, prueba de humo
+  `ClipIA.exe --version`) y lo sube como artefacto del workflow.
+  El build no se puede probar en el servidor de desarrollo (Linux):
+  la primera corrida del workflow es la prueba real.
+- **YouTube más robusto**: opción de cookies del navegador en
+  Ajustes (Chrome, Edge o Firefox) para el anti-bot de YouTube; si
+  las cookies fallan, la descarga se reintenta una vez sin ellas.
+  Los errores de yt-dlp se traducen a mensajes accionables en
+  español (qué hacer en cada caso: iniciar sesión, actualizar
+  yt-dlp, revisar la conexión...). Botón «Actualizar yt-dlp» en
+  Ajustes: en modo dev actualiza con pip; en el instalador descarga
+  o auto-actualiza el binario standalone oficial `yt-dlp.exe`
+  (~23 MB), que la app prefiere sobre la librería empaquetada
+  cuando existe (la librería empaquetada no se puede actualizar
+  con pip).
+- **Modelo de voz con progreso visible**: en el primer uso, la
+  descarga del modelo Whisper muestra su avance real en la barra de
+  estado («Descargando modelo de voz…»); sin red, el error dice
+  qué hacer en vez del error técnico de faster-whisper.
+- Flag `--version` (`ClipIA.exe --version` imprime la versión y
+  sale sin abrir ventana; lo usa la prueba de humo del build).
+- La suite pytest crece a 351 tests (cookies y errores de descarga,
+  binario externo y actualización de yt-dlp, progreso del modelo,
+  validación del spec/ISS/workflow, YuNet empaquetado).
+- Métricas finales (video 2:57, CPU, modelo base): transcribir
+  ~21 s en frío (0.1 s desde caché), vista previa de 60 s con
+  subtítulos ~22 s, export de 60 s ~50 s (el objetivo de 30 s en
+  CPU sigue sin alcanzarse; el camino es NVENC en GPU, sin medir
+  en este servidor), 0 clips cortados a media frase.
+
 ### Fase 3: UX de producto (13-11-2026)
 
 - **Editor de clip** (`clipia/editor.py`): cada tarjeta tiene un

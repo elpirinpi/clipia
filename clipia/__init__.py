@@ -29,6 +29,14 @@ from .exportacion import (
     generar_vista_previa,
 )
 from .momentos import detectar_momentos
+from .ollama import (
+    INSTRUCCIONES_INSTALACION,
+    INSTRUCCIONES_MODELO,
+    MODELO_DEFECTO,
+    modelo_disponible,
+    ollama_disponible,
+    rerank_ollama,
+)
 from .procesos import contar, ejecutar, matar_todos, olvidar, registrar
 from .rostros import detectar_rostros, detectar_rostros_con_limite
 from .subtitulos import generar_subtitulos_ass
@@ -44,6 +52,9 @@ from .utilidades import formato_ass, formato_hora, obtener_duracion
 
 __all__ = [
     "IDIOMAS",
+    "INSTRUCCIONES_INSTALACION",
+    "INSTRUCCIONES_MODELO",
+    "MODELO_DEFECTO",
     "MODELOS_WHISPER",
     "ColaExportacion",
     "ExportacionCancelada",
@@ -69,12 +80,15 @@ __all__ = [
     "leer_cache",
     "liberar_modelos",
     "matar_todos",
+    "modelo_disponible",
     "obtener_duracion",
     "obtener_modelo",
+    "ollama_disponible",
     "olvidar",
     "opciones_encoder",
     "ram_total_gb",
     "registrar",
+    "rerank_ollama",
     "transcribir",
     "workers_efectivos",
     "workers_recomendados",

@@ -29,6 +29,14 @@ from clipia.cola import ColaExportacion, TrabajoExportacion, workers_efectivos
 from clipia.config import cargar_config, guardar_config
 from clipia.encoder import descripcion_encoder, detectar_encoder
 from clipia.logs import configurar_logging
+from clipia.ollama import (
+    INSTRUCCIONES_INSTALACION,
+    INSTRUCCIONES_MODELO,
+    MODELO_DEFECTO,
+    modelo_disponible,
+    ollama_disponible,
+    rerank_ollama,
+)
 from clipia.procesos import matar_todos
 from clipia.rostros import detectar_rostros_con_limite
 from clipia.transcripcion import IDIOMAS, MODELOS_WHISPER, ram_total_gb
@@ -494,6 +502,12 @@ class AppClipIA(ctk.CTk):
             command=self._crear_clip_manual,
         )
         self.boton_crear_clip.pack(side="right")
+        self.boton_ollama = ctk.CTkButton(
+            cabecera, text="✨ Reordenar con IA local", fg_color=TARJETA,
+            hover_color=BORDE, text_color=TEXTO, height=30, width=200,
+            command=self._reordenar_ollama,
+        )
+        self.boton_ollama.pack(side="right", padx=(0, 6))
 
         self.lista_clips = ctk.CTkScrollableFrame(
             derecha, fg_color="transparent", scrollbar_button_color=BORDE)
@@ -582,6 +596,7 @@ class AppClipIA(ctk.CTk):
         self.boton_exportar.configure(state=estado)
         self.boton_seleccionar.configure(state=estado)
         self.boton_crear_clip.configure(state=estado)
+        self.boton_ollama.configure(state=estado)
         self.boton_examinar.configure(state=estado)
         self.boton_carpeta.configure(state=estado)
         self.boton_ajustes.configure(state=estado)
@@ -770,19 +785,23 @@ class AppClipIA(ctk.CTk):
                     generar, enumerate(self.candidatos, start=1)):
                 self.candidatos[i - 1]["miniatura"] = ruta
 
-    def _mostrar_clips(self, preservar_seleccion: bool = False) -> None:
+    def _mostrar_clips(self, preservar_seleccion: bool = False,
+                       seleccion_previa: dict | None = None) -> None:
         # B10: al agregar un clip manual se redibuja la lista; con
         # preservar_seleccion se mantiene lo que el usuario desmarcó
         # (antes todo volvía a marcado). Tras un análisis nuevo no se
-        # preserva (son otros clips).
-        seleccion_previa = {}
-        if preservar_seleccion:
-            # Las listas pueden diferir en uno: el clip manual recién
-            # agregado aún no tiene selección (queda en True).
-            for i, c in enumerate(self.candidatos):
-                if i < len(self.seleccion):
-                    seleccion_previa[(c["start"], c["end"])] = \
-                        self.seleccion[i].get()
+        # preserva (son otros clips). Si se pasa `seleccion_previa`
+        # (reorden con Ollama), se usa ese mapa en vez de reconstruirlo
+        # de la lista actual, que ya cambió de orden.
+        if seleccion_previa is None:
+            seleccion_previa = {}
+            if preservar_seleccion:
+                # Las listas pueden diferir en uno: el clip manual recién
+                # agregado aún no tiene selección (queda en True).
+                for i, c in enumerate(self.candidatos):
+                    if i < len(self.seleccion):
+                        seleccion_previa[(c["start"], c["end"])] = \
+                            self.seleccion[i].get()
         for widget in self.lista_clips.winfo_children():
             widget.destroy()
         self.seleccion = []
@@ -862,6 +881,67 @@ class AppClipIA(ctk.CTk):
             self._mostrar_clips(preservar_seleccion=True)
 
         DialogoClipManual(self, self.duracion_video, agregar)
+
+    def _reordenar_ollama(self) -> None:
+        """Reordena los clips con un LLM local (Ollama), si está
+        instalado. Sin Ollama muestra las instrucciones; nunca bloquea
+        la app (todo corre en un hilo)."""
+        if self.ocupado:
+            return
+        if not self.candidatos:
+            messagebox.showinfo(
+                "ClipIA", "Primero carga y analiza un video.")
+            return
+        self._bloquear(True)
+        self._estado("Comprobando la IA local…", 0)
+        # La selección se captura en el hilo de la UI, antes de que el
+        # reorden cambie el orden de los candidatos.
+        seleccion_previa = {
+            (c["start"], c["end"]): v.get()
+            for c, v in zip(self.candidatos, self.seleccion, strict=False)}
+        threading.Thread(target=self._hilo_reordenar_ollama,
+                         args=(seleccion_previa,), daemon=True).start()
+
+    def _hilo_reordenar_ollama(self, seleccion_previa: dict) -> None:
+        try:
+            if not ollama_disponible():
+                self._ui(messagebox.showinfo, "ClipIA",
+                         INSTRUCCIONES_INSTALACION)
+                self._ui(self._estado, "Listo.", 0)
+                return
+            if not modelo_disponible():
+                self._ui(messagebox.showinfo, "ClipIA",
+                         INSTRUCCIONES_MODELO
+                         % (MODELO_DEFECTO, MODELO_DEFECTO))
+                self._ui(self._estado, "Listo.", 0)
+                return
+            self._ui(self._estado,
+                     "Reordenando con IA local… (puede tardar 1-2 min)",
+                     0)
+            reordenados = rerank_ollama(list(self.candidatos))
+            if reordenados is None:
+                self._ui(
+                    self._estado,
+                    "La IA local no respondió; se mantiene el orden actual.",
+                    0)
+                return
+            # El cambio de candidatos y el redibujado ocurren juntos en
+            # el hilo de la UI (la selección se conserva por tiempos).
+            self._ui(self._aplicar_reorden, reordenados, seleccion_previa)
+            self._ui(self._estado, "Clips reordenados con IA local.", 1.0)
+        except Exception as error:  # noqa: BLE001 - mostrar cualquier error
+            detalle = "%s: %s" % (type(error).__name__, error)
+            log.exception("error al reordenar con Ollama")
+            self._ui(self._estado, "Error: %s" % detalle, 0)
+            self._ui(messagebox.showerror, "ClipIA", detalle)
+        finally:
+            self._ui(self._bloquear, False)
+
+    def _aplicar_reorden(self, reordenados: list[dict],
+                         seleccion_previa: dict) -> None:
+        """Aplica un reorden de candidatos (corre en el hilo de la UI)."""
+        self.candidatos = reordenados
+        self._mostrar_clips(True, seleccion_previa)
 
     def _vista_previa(self, clip: dict) -> None:
         if self.ocupado:

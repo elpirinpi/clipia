@@ -18,5 +18,8 @@ ignore = [
     "B011",  # assert False / raise en tests
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["clipia", "clipia_core"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

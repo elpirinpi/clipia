@@ -7,6 +7,7 @@ elige los mejores fragmentos y ffmpeg exporta los clips en 1080x1920
 con subtítulos quemados.
 """
 
+import logging
 import os
 import queue
 import shutil
@@ -23,6 +24,10 @@ import customtkinter as ctk
 from PIL import Image
 
 import clipia_core as core
+from clipia.config import cargar_config, guardar_config
+from clipia.logs import configurar_logging
+
+log = logging.getLogger("clipia.gui")
 
 # ---------------------------------------------------------------------------
 # Paleta "Estudio de clips" (oscura, un solo acento rojo como en el video)
@@ -164,8 +169,8 @@ def _detectar_con_limite(
     hilo.start()
     hilo.join(timeout)
     if hilo.is_alive():
-        print("ClipIA: la detección de rostros tardó más de %d s, "
-              "se sigue con el recorte centrado." % timeout, file=sys.stderr)
+        log.warning("la detección de rostros tardó más de %d s; "
+                    "se sigue con el recorte centrado", timeout)
     return resultado
 
 
@@ -203,9 +208,19 @@ class AppClipIA(ctk.CTk):
         self.segmentos = []
         self.candidatos = []       # dicts con start, end, score, text
         self.seleccion = []        # lista de tk.BooleanVar, una por clip
-        self.carpeta_salida = _crear_carpeta_salida()
+        self.config = cargar_config()
+        carpeta_guardada = self.config.get("carpeta_salida") or ""
+        if carpeta_guardada:
+            try:
+                os.makedirs(carpeta_guardada, exist_ok=True)
+                self.carpeta_salida = carpeta_guardada
+            except OSError:
+                self.carpeta_salida = _crear_carpeta_salida()
+        else:
+            self.carpeta_salida = _crear_carpeta_salida()
         self.ocupado = False
-        self.seguir_rostros = tk.BooleanVar(value=True)
+        self.seguir_rostros = tk.BooleanVar(
+            value=bool(self.config.get("seguir_rostros", True)))
         self._imagenes_miniaturas = []
         self._dir_miniaturas = None
         self._cola_ui = queue.Queue()
@@ -432,6 +447,12 @@ class AppClipIA(ctk.CTk):
         if self._dir_miniaturas:
             shutil.rmtree(self._dir_miniaturas, ignore_errors=True)
             self._dir_miniaturas = None
+        try:
+            self.config["carpeta_salida"] = self.carpeta_salida
+            self.config["seguir_rostros"] = self.seguir_rostros.get()
+            guardar_config(self.config)
+        except OSError:
+            pass
         self.destroy()
 
     # -- Acciones ----------------------------------------------------------
@@ -534,6 +555,7 @@ class AppClipIA(ctk.CTk):
                      % len(self.candidatos), 1.0)
         except Exception as error:  # noqa: BLE001 - mostrar cualquier error
             detalle = "%s: %s" % (type(error).__name__, error)
+            log.exception("error en el análisis del video")
             self._ui(self._estado, "Error: %s" % detalle, 0)
             self._ui(messagebox.showerror, "ClipIA", detalle)
             self._ui(self._ir_paso, 0)
@@ -681,6 +703,7 @@ class AppClipIA(ctk.CTk):
             self._ui(self._estado, "Vista previa lista.", 1.0)
         except Exception as error:  # noqa: BLE001 - mostrar cualquier error
             detalle = "%s: %s" % (type(error).__name__, error)
+            log.exception("error en la vista previa")
             self._ui(self._estado, "Error: %s" % detalle, 0)
             self._ui(messagebox.showerror, "ClipIA", detalle)
         finally:
@@ -766,6 +789,7 @@ class AppClipIA(ctk.CTk):
                      % (total, self.carpeta_salida))
         except Exception as error:  # noqa: BLE001 - mostrar cualquier error
             detalle = "%s: %s" % (type(error).__name__, error)
+            log.exception("error en la exportación")
             self._ui(self._estado, "Error: %s" % detalle, 0)
             self._ui(messagebox.showerror, "ClipIA", detalle)
         finally:
@@ -773,6 +797,7 @@ class AppClipIA(ctk.CTk):
 
 
 def main() -> None:
+    configurar_logging()
     app = AppClipIA()
     app.mainloop()
 

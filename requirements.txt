@@ -4,3 +4,7 @@ faster-whisper==1.2.1
 yt-dlp==2026.10.26
 opencv-python-headless==4.11.0.86
 Pillow==13.0.0
+# B7: numpy y ctranslate2 se importan directo en el codigo; antes solo
+# llegaban como transitivas y un cambio de faster-whisper podia romperlos.
+numpy==2.5.4
+ctranslate2==4.9.0
